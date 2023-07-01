@@ -33,7 +33,7 @@ namespace VkCourse
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // Not OpenGL neither OpenGL ES
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); // Window not resizable for now
-		m_window = glfwCreateWindow(1600, 900, windowName.c_str(), nullptr, nullptr);
+		m_window = glfwCreateWindow(width, height, windowName.c_str(), nullptr, nullptr);
 		if (m_window == nullptr)
 		{
 			glfwTerminate();

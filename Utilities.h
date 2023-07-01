@@ -19,9 +19,14 @@ namespace VkCourse
 		}
 	};
 
-	struct SwapChainDetails {
+	struct SwapchainDetails {
 		VkSurfaceCapabilitiesKHR surfaceCapabilities;				// e.g. image size/extent
 		std::vector<VkSurfaceFormatKHR> surfaceSupportedFormats;	// e.g. R8G8B8
 		std::vector<VkPresentModeKHR> presentationModes;			// e.g. Immediate, mailbox, FIFO
+	};
+
+	struct SwapchainImage {
+		VkImage image;				
+		VkImageView imageView;
 	};
 }

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <algorithm>
 
 
 namespace VkCourse
@@ -29,6 +30,7 @@ namespace VkCourse
 			create_surface();
 			obtain_physical_device();
 			create_logical_device();
+			create_swapchain();
 		}
 		catch (const std::runtime_error& error)
 		{
@@ -42,6 +44,11 @@ namespace VkCourse
 	void VulkanRenderer::free()
 	{
 		// Destroy in inverse order of creation
+		for (const auto& image : m_swapchainImages)
+		{
+			vkDestroyImageView(m_device.logicalDevice, image.imageView, nullptr);
+		}
+		vkDestroySwapchainKHR(m_device.logicalDevice, m_swapchain, nullptr);
 		vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
 		vkDestroyDevice(m_device.logicalDevice, nullptr);
 		vkDestroyInstance(m_instance, nullptr);
@@ -70,7 +77,7 @@ namespace VkCourse
 
 		if (!check_instance_extension_support(instanceRequiredExtensions))
 		{
-			throw std::runtime_error("VkInstance does not support required extensions!");
+			throw std::runtime_error("Instance does not support required extensions!");
 		}
 
 		if (validationLayersEnabled && !check_validation_layer_support(requestedValidationLayerNames))
@@ -97,7 +104,7 @@ namespace VkCourse
 		VkResult result{ vkCreateInstance(&instanceCreateInfo, nullptr, &m_instance) };
 		if (result != VK_SUCCESS)
 		{
-			throw std::runtime_error("Error creating Vulkan instance!");
+			throw std::runtime_error("Failed to create a Vulkan instance!");
 		}
 	}
 
@@ -108,8 +115,8 @@ namespace VkCourse
 
 		// We use a set to avoid creating duplicate queues (e.g. if graphics queue is the same as presentation queue)
 		std::set<int> queueFamilyUniqueIndices{
-			queueFamilyIndices.graphicsFamily, 
-			queueFamilyIndices.presentationFamily 
+			queueFamilyIndices.graphicsFamily,
+			queueFamilyIndices.presentationFamily
 		};
 
 		// Store all the create infos of the queues to later pass to logical device create info
@@ -160,7 +167,84 @@ namespace VkCourse
 		VkResult result{ glfwCreateWindowSurface(m_instance, m_window.get_window_handle(), nullptr, &m_surface) };
 		if (result != VK_SUCCESS)
 		{
-			throw std::runtime_error("Unable to create a surface!");
+			throw std::runtime_error("Failed to create a surface!");
+		}
+
+	}
+
+	void VulkanRenderer::create_swapchain()
+	{
+		// Get the swap chain details of the selected physical device
+		SwapchainDetails swapchainDetails{ get_swap_chain_details(m_device.physicalDevice) };
+
+		// Pick the best values to be used in the swapchain creation
+		VkSurfaceFormatKHR selectedSurfaceFormat{ choose_surface_format(swapchainDetails.surfaceSupportedFormats) };
+		VkPresentModeKHR selectedPresentationMode{ choose_presentation_mode(swapchainDetails.presentationModes) };
+		VkExtent2D selectedExtent{ choose_swapchain_extent(swapchainDetails.surfaceCapabilities) };
+
+		// Select a swapchain minimum image count. We should get one more than the minimum to allow triple buffering
+		uint32_t imageCount{ swapchainDetails.surfaceCapabilities.minImageCount + 1 };
+		if (swapchainDetails.surfaceCapabilities.maxImageCount > 0 // If it's 0, it has no limit
+			&& swapchainDetails.surfaceCapabilities.maxImageCount < imageCount)
+		{
+			imageCount = swapchainDetails.surfaceCapabilities.maxImageCount;
+		}		
+
+		VkSwapchainCreateInfoKHR swapchainCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+			.surface = m_surface,
+			.minImageCount = imageCount,
+			.imageFormat = selectedSurfaceFormat.format,
+			.imageColorSpace = selectedSurfaceFormat.colorSpace,
+			.imageExtent = selectedExtent,
+			.imageArrayLayers = 1,
+			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+			.preTransform = swapchainDetails.surfaceCapabilities.currentTransform,
+			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+			.presentMode = selectedPresentationMode,
+			.clipped = VK_TRUE,
+			.oldSwapchain = VK_NULL_HANDLE	// If this swapchain replaces another one, this may aid in the resource reuse
+		};
+
+		// We need to check if the swapchain can work exclusively with one queue queue family or not
+		QueueFamilyIndices deviceQueueFamilyIndices{ get_queue_family_indices(m_device.physicalDevice) };
+		uint32_t queueFamilyIndices[]{
+			static_cast<uint32_t>(deviceQueueFamilyIndices.graphicsFamily),
+			static_cast<uint32_t>(deviceQueueFamilyIndices.presentationFamily)
+		};
+		if (deviceQueueFamilyIndices.graphicsFamily != deviceQueueFamilyIndices.presentationFamily)
+		{
+			swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+			swapchainCreateInfo.queueFamilyIndexCount = 2;
+			swapchainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
+		}
+		
+		VkResult result{ vkCreateSwapchainKHR(m_device.logicalDevice, &swapchainCreateInfo, nullptr, &m_swapchain) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create a swapchain!");
+		}
+
+		// We save these values now that we know they are compatible ans we will use them in the future
+		m_swapchainImageFormat = selectedSurfaceFormat.format;
+		m_swapchainExtent = selectedExtent;
+
+		// Now we can fill the list of images that we can use from the swapchain
+		uint32_t createdSwapchainImageCount{};
+		vkGetSwapchainImagesKHR(m_device.logicalDevice, m_swapchain, &createdSwapchainImageCount, nullptr);
+		std::vector<VkImage> createdSwapchainImages(createdSwapchainImageCount);
+		vkGetSwapchainImagesKHR(m_device.logicalDevice, m_swapchain, &createdSwapchainImageCount, createdSwapchainImages.data());
+
+		for (const auto& createdImage : createdSwapchainImages)
+		{
+			// Create corresponding image view to interface with the obtained swapchain image
+			SwapchainImage swapChainImage{
+				.image = createdImage,
+				.imageView = create_image_view(createdImage, m_swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT)
+			};
+
+			m_swapchainImages.push_back(swapChainImage);
 		}
 
 	}
@@ -170,12 +254,10 @@ namespace VkCourse
 		// Enumerate all physical devices available to our instance
 		uint32_t physicalDeviceCount{};
 		vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, nullptr);
-
 		if (physicalDeviceCount == 0)
 		{
 			throw std::runtime_error("No devices available in the current instance!");
 		}
-
 		std::vector<VkPhysicalDevice> availablePhysicalDevices(physicalDeviceCount);
 		vkEnumeratePhysicalDevices(m_instance, &physicalDeviceCount, availablePhysicalDevices.data());
 
@@ -194,11 +276,10 @@ namespace VkCourse
 	{
 		QueueFamilyIndices queueFamilyIndices{};
 
-		// Get the number of queue families supported by the device to later query and obtain their indices
+		// Get the number of queue families supported by the device to later query and obtain their indices,
+		// returned list will be ordered by index
 		uint32_t queueFamilyCount{};
 		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-		// Returned list will be ordered by index
 		std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
 		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilyProperties.data());
 
@@ -233,9 +314,9 @@ namespace VkCourse
 		return queueFamilyIndices;
 	}
 
-	SwapChainDetails VulkanRenderer::get_swap_chain_details(const VkPhysicalDevice& device) const
+	SwapchainDetails VulkanRenderer::get_swap_chain_details(const VkPhysicalDevice& device) const
 	{
-		SwapChainDetails swapChainDetails{};
+		SwapchainDetails swapChainDetails{};
 
 		// Get surface capabilities for a given surface on a given physical device
 		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface, &swapChainDetails.surfaceCapabilities);
@@ -243,7 +324,6 @@ namespace VkCourse
 		// Get the available formats
 		uint32_t supportedFormatCount{};
 		vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &supportedFormatCount, nullptr);
-
 		if (supportedFormatCount > 0)
 		{
 			swapChainDetails.surfaceSupportedFormats.resize(supportedFormatCount);
@@ -268,7 +348,6 @@ namespace VkCourse
 		// First we get the number of supported extensions, then we query again with a vector big enough
 		uint32_t supportedExtensionCount{};
 		vkEnumerateInstanceExtensionProperties(nullptr, &supportedExtensionCount, nullptr);
-
 		std::vector<VkExtensionProperties> supportedExtensionProperties(supportedExtensionCount);
 		vkEnumerateInstanceExtensionProperties(nullptr, &supportedExtensionCount, supportedExtensionProperties.data());
 
@@ -290,20 +369,19 @@ namespace VkCourse
 	}
 
 	// Check that the physical device passed by parameter supports all the requested extensions (defined in Utilities.h)
-	bool VulkanRenderer::check_device_extension_support(const VkPhysicalDevice& device) const
+	bool VulkanRenderer::check_device_extension_support(const VkPhysicalDevice& device, 
+														const std::vector<const char*>& requestedExtensionNames) const
 	{
 		uint32_t supportedExtensionCount{};
 		vkEnumerateDeviceExtensionProperties(device, nullptr, &supportedExtensionCount, nullptr);
-
 		if (supportedExtensionCount == 0)
 		{
 			return false;
 		}
-
 		std::vector<VkExtensionProperties> supportedExtensionProperties(supportedExtensionCount);
 		vkEnumerateDeviceExtensionProperties(device, nullptr, &supportedExtensionCount, supportedExtensionProperties.data());
 
-		for (const auto& requestedDeviceExtensionName : requestedDeviceExtensionNames)
+		for (const auto& requestedDeviceExtensionName : requestedExtensionNames)
 		{
 			bool isSupported{ false };
 			for (const auto& supportedExtension : supportedExtensionProperties)
@@ -332,13 +410,13 @@ namespace VkCourse
 		//VkPhysicalDeviceFeatures physicalDeviceFeatures;
 		//vkGetPhysicalDeviceFeatures(device, &physicalDeviceFeatures);
 
-		if (!check_device_extension_support(device))
+		if (!check_device_extension_support(device, requestedDeviceExtensionNames))
 		{
 			return false;
 		}
 
 		// Get device swap chain details to check that there it supports some formats and/or presentation modes
-		SwapChainDetails deviceSwapChainDetails{ get_swap_chain_details(device) };
+		SwapchainDetails deviceSwapChainDetails{ get_swap_chain_details(device) };
 		if (deviceSwapChainDetails.surfaceSupportedFormats.empty()
 			|| deviceSwapChainDetails.presentationModes.empty())
 		{
@@ -351,11 +429,109 @@ namespace VkCourse
 		return deviceQueueFamilyIndices.are_all_valid();
 	}
 
+	// For this particular program, the function tries to select:
+	// - Format: VK_FORMAT_R8G8B8A8_UNORM
+	// - Color space: VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+	VkSurfaceFormatKHR VulkanRenderer::choose_surface_format(const std::vector<VkSurfaceFormatKHR>& surfaceFormatList) const
+	{
+		// In this case, all the formats are available
+		if (surfaceFormatList.size() == 1 && surfaceFormatList[0].format == VK_FORMAT_UNDEFINED)
+		{
+			return {
+				VK_FORMAT_R8G8B8A8_UNORM,
+				VK_COLOR_SPACE_SRGB_NONLINEAR_KHR 
+			};
+		}
+
+		// If not all are available, we look for the one we want
+		for (const auto& surfaceFormat : surfaceFormatList)
+		{
+			if ((surfaceFormat.format == VK_FORMAT_R8G8B8A8_UNORM || surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM)
+				&& surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+			{
+				return surfaceFormat;
+			}
+		}
+
+		// Otherwise just return the first one and hope it works (generally shouldn't happen)
+		return surfaceFormatList[0];
+	}
+
+	// Try to select mailbox presentation mode, otherwise select FIFO mode
+	VkPresentModeKHR VulkanRenderer::choose_presentation_mode(const std::vector<VkPresentModeKHR>& presentationModeList) const
+	{
+		for (const auto& presentationMode : presentationModeList)
+		{
+			if (presentationMode == VK_PRESENT_MODE_MAILBOX_KHR)
+			{
+				return presentationMode;
+			}
+		}
+
+		// We use this otherwise, since it should always be available according to specification
+		return VK_PRESENT_MODE_FIFO_KHR;
+	}
+
+	VkExtent2D VulkanRenderer::choose_swapchain_extent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) const
+	{
+		// If this isn't set to the maximum value, the current extent is already set to a correct value
+		if (surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>().max())
+		{
+			return surfaceCapabilities.currentExtent;
+		}
+
+		// Otherwise we need to set the extent manually
+		int width, height;
+		glfwGetFramebufferSize(m_window.get_window_handle(), &width, &height);
+
+		VkExtent2D newExtent{
+			static_cast<uint32_t>(width),
+			static_cast<uint32_t>(height)
+		};
+
+		// We need to check that the new extent is inside the boundaries of the surface maximum and minimum extents
+		newExtent.width = std::clamp(newExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+		newExtent.height = std::clamp(newExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+
+		return newExtent;
+	}
+
+	VkImageView VulkanRenderer::create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+	{
+		VkImageViewCreateInfo imageViewCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+			.image = image,
+			.viewType = VK_IMAGE_VIEW_TYPE_2D,
+			.format = format,
+			.components = {
+				.r = VK_COMPONENT_SWIZZLE_IDENTITY, // r = r
+				.g = VK_COMPONENT_SWIZZLE_IDENTITY, // g = g
+				.b = VK_COMPONENT_SWIZZLE_IDENTITY, // b = b
+				.a = VK_COMPONENT_SWIZZLE_IDENTITY  // a = a
+			},
+			.subresourceRange = {
+				.aspectMask = aspectFlags,	// Which aspect of the image to view (e.g. COLOR_BIT, DEPTH_BIT...)
+				.baseMipLevel = 0,			// Start mipmap level to view from
+				.levelCount = 1,			// Number of mipmap levels to view
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			}
+		};
+
+		VkImageView imageView;
+		VkResult result{ vkCreateImageView(m_device.logicalDevice, &imageViewCreateInfo, nullptr, &imageView) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create image view!");
+		}
+
+		return imageView;
+	}
+
 	bool VulkanRenderer::check_validation_layer_support(const std::vector<const char*>& requestedValidationLayerNames) const
 	{
 		uint32_t enabledLayerCount{};
 		vkEnumerateInstanceLayerProperties(&enabledLayerCount, nullptr);
-
 		std::vector<VkLayerProperties> supportedLayerProperties(enabledLayerCount);
 		vkEnumerateInstanceLayerProperties(&enabledLayerCount, supportedLayerProperties.data());
 

@@ -32,7 +32,7 @@ namespace VkCourse
 	private:
 		const Window& m_window;
 
-		// Vulkan components
+		// Main Vulkan components
 		VkInstance m_instance;
 		struct {
 			VkPhysicalDevice physicalDevice;
@@ -41,24 +41,39 @@ namespace VkCourse
 		VkQueue m_graphicsQueue;
 		VkQueue m_presentationQueue;
 		VkSurfaceKHR m_surface;
+		VkSwapchainKHR m_swapchain;
+		std::vector<SwapchainImage> m_swapchainImages{};
+
+		// Secondary Vulkan components
+		VkFormat m_swapchainImageFormat;
+		VkExtent2D m_swapchainExtent;
 
 		// Vulkan functions
 		// - Create functions
 		void create_instance();
 		void create_logical_device();
 		void create_surface();
+		void create_swapchain();
 
 		// - Get/Obtain functions
 		// Not a getter, obtains the physical device to initialize m_device.physicalDevice
 		void obtain_physical_device();
 		QueueFamilyIndices get_queue_family_indices(const VkPhysicalDevice& device) const;
-		SwapChainDetails get_swap_chain_details(const VkPhysicalDevice& device) const;
+		SwapchainDetails get_swap_chain_details(const VkPhysicalDevice& device) const;
 
 		// - Support functions
+		// -- Check functions
 		bool check_instance_extension_support(const std::vector<const char*>& requestedExtensionNames) const;
-		bool check_device_extension_support(const VkPhysicalDevice& device) const;
-		bool check_validation_layer_support(const std::vector<const char*>& supportedValidationLayerNames) const;
-		// Check support for properties, features, queue families...
+		bool check_device_extension_support(const VkPhysicalDevice& device, const std::vector<const char*>& requestedExtensionNames) const;
+		bool check_validation_layer_support(const std::vector<const char*>& requestedValidationLayerNames) const;
 		bool device_supports_requirements(const VkPhysicalDevice& device) const;
+
+		// -- Choose functions
+		VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR>& surfaceFormatList) const;
+		VkPresentModeKHR choose_presentation_mode(const std::vector<VkPresentModeKHR>& presentationModeList) const;
+		VkExtent2D choose_swapchain_extent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) const;
+
+		// -- Create functions (reusable)
+		VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 	};
 }
