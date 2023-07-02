@@ -44,6 +44,11 @@ namespace VkCourse
 		VkSwapchainKHR m_swapchain;
 		std::vector<SwapchainImage> m_swapchainImages{};
 
+		// Pipeline
+		VkPipeline m_graphicsPipeline;
+		VkPipelineLayout m_pipelineLayout;
+		VkRenderPass m_renderPass;
+
 		// Secondary Vulkan components
 		VkFormat m_swapchainImageFormat;
 		VkExtent2D m_swapchainExtent;
@@ -54,6 +59,7 @@ namespace VkCourse
 		void create_logical_device();
 		void create_surface();
 		void create_swapchain();
+		void create_render_pass();
 		void create_graphics_pipeline();
 
 		// - Get/Obtain functions
