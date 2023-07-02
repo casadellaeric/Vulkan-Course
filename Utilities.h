@@ -1,5 +1,8 @@
 #pragma once
 
+#include <fstream>
+#include <string_view>
+
 namespace VkCourse
 {
 	const std::vector<const char*> requestedDeviceExtensionNames{
@@ -29,4 +32,24 @@ namespace VkCourse
 		VkImage image;				
 		VkImageView imageView;
 	};
+
+	inline std::vector<char> readFile(std::string_view fileName)
+	{
+		// Binary (we are reading SPIR-V) + start reading from the end of file (to know the size)
+		std::ifstream file(fileName.data(), std::ios::binary | std::ios::ate);
+		if (!file.is_open())
+		{
+			throw std::runtime_error("Failed to open file" + std::string(fileName) + "!");
+		}
+
+		size_t fileSize{ static_cast<size_t>(file.tellg()) };
+		std::vector<char> fileBuffer(fileSize);
+
+		// Go back to position 0 to start reading file
+		file.seekg(0);
+		file.read(fileBuffer.data(), fileSize);
+		file.close();
+
+		return fileBuffer;
+	}
 }

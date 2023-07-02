@@ -54,6 +54,7 @@ namespace VkCourse
 		void create_logical_device();
 		void create_surface();
 		void create_swapchain();
+		void create_graphics_pipeline();
 
 		// - Get/Obtain functions
 		// Not a getter, obtains the physical device to initialize m_device.physicalDevice
@@ -75,5 +76,6 @@ namespace VkCourse
 
 		// -- Create functions (reusable)
 		VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+		VkShaderModule create_shader_module(const std::vector<char>& code);
 	};
 }

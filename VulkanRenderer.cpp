@@ -31,6 +31,7 @@ namespace VkCourse
 			obtain_physical_device();
 			create_logical_device();
 			create_swapchain();
+			create_graphics_pipeline();
 		}
 		catch (const std::runtime_error& error)
 		{
@@ -188,7 +189,7 @@ namespace VkCourse
 			&& swapchainDetails.surfaceCapabilities.maxImageCount < imageCount)
 		{
 			imageCount = swapchainDetails.surfaceCapabilities.maxImageCount;
-		}		
+		}
 
 		VkSwapchainCreateInfoKHR swapchainCreateInfo{
 			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -247,6 +248,44 @@ namespace VkCourse
 			m_swapchainImages.push_back(swapChainImage);
 		}
 
+	}
+
+	void VulkanRenderer::create_graphics_pipeline()
+	{
+		// Read already compiled SPIR-V shaders
+		std::vector<char> vertexShaderCode{ readFile("Shaders/vert.spv") };
+		std::vector<char> fragmentShaderCode{ readFile("Shaders/frag.spv") };
+
+		// Build shader modules to link to graphics pipeline
+		VkShaderModule vertexShaderModule{ create_shader_module(vertexShaderCode) };
+		VkShaderModule fragmentShaderModule{ create_shader_module(fragmentShaderCode) };
+
+		// Configure stages of the pipeline with create infos
+		VkPipelineShaderStageCreateInfo vertexShaderStageCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_VERTEX_BIT,
+			.module = vertexShaderModule,
+			.pName = "main"
+		};
+
+		VkPipelineShaderStageCreateInfo fragmentShaderStageCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.module = fragmentShaderModule,
+			.pName = "main"
+		};
+
+		VkPipelineShaderStageCreateInfo shaderStages[]{ 
+			vertexShaderStageCreateInfo, 
+			fragmentShaderStageCreateInfo 
+		};
+
+		// Create pipeline
+
+
+		// Destroy shader modules (no longer needed after pipeline has been created)
+		vkDestroyShaderModule(m_device.logicalDevice, fragmentShaderModule, nullptr);
+		vkDestroyShaderModule(m_device.logicalDevice, vertexShaderModule, nullptr);
 	}
 
 	void VulkanRenderer::obtain_physical_device()
@@ -526,6 +565,28 @@ namespace VkCourse
 		}
 
 		return imageView;
+	}
+
+	VkShaderModule VulkanRenderer::create_shader_module(const std::vector<char>& code)
+	{
+		if ((sizeof(char) * code.size()) % sizeof(uint32_t) != 0)
+		{
+			throw std::runtime_error("Shader code is not able to be pointed at by uint32_t*.");
+		}
+
+		VkShaderModuleCreateInfo shaderModuleCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize = code.size(),
+			.pCode = reinterpret_cast<const uint32_t*>(code.data())
+		};
+
+		VkShaderModule shaderModule;
+		VkResult result{ vkCreateShaderModule(m_device.logicalDevice, &shaderModuleCreateInfo, nullptr, &shaderModule) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create shader module!");
+		}
+		return shaderModule;
 	}
 
 	bool VulkanRenderer::check_validation_layer_support(const std::vector<const char*>& requestedValidationLayerNames) const
