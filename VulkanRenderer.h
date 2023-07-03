@@ -27,10 +27,14 @@ namespace VkCourse
 		~VulkanRenderer();
 
 		int init();
-		void free();
+		void draw();
+		void destroy();
 
 	private:
 		const Window& m_window;
+
+		// Keeps track of which frame between 0 and MAX_FRAMES - 1, is being rendered to inside draw()
+		unsigned int currentFrame{ 0 };
 
 		// Main Vulkan components
 		VkInstance m_instance;
@@ -58,6 +62,11 @@ namespace VkCourse
 		// Secondary Vulkan components
 		VkFormat m_swapchainImageFormat;
 		VkExtent2D m_swapchainExtent;
+		
+		// Synchronization
+		std::vector<VkSemaphore> m_semaphoresImageAvailable{};
+		std::vector<VkSemaphore> m_semaphoresRenderFinished{};
+		std::vector<VkFence> m_fencesDraw{};
 
 		// Vulkan functions
 		// - Create functions
@@ -70,7 +79,7 @@ namespace VkCourse
 		void create_framebuffers();
 		void create_command_pool();
 		void create_command_buffers();
-		
+		void create_synchronization();
 
 		// - Record functions
 		void record_commands();

@@ -5,6 +5,9 @@
 
 namespace VkCourse
 {
+	// Number of simultaneous frames that can be in use
+	constexpr unsigned int MAX_FRAME_DRAWS{ 2 };
+
 	const std::vector<const char*> requestedDeviceExtensionNames{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
@@ -33,7 +36,7 @@ namespace VkCourse
 		VkImageView imageView;
 	};
 
-	inline std::vector<char> readFile(std::string_view fileName)
+	inline std::vector<char> read_file(std::string_view fileName)
 	{
 		// Binary (we are reading SPIR-V) + start reading from the end of file (to know the size)
 		std::ifstream file(fileName.data(), std::ios::binary | std::ios::ate);

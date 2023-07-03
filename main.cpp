@@ -21,6 +21,7 @@ int main()
 			{
 				// Check for inputs
 				window.process_pending_events();
+				vulkanRenderer.draw();
 			}
 		} 
 	}
