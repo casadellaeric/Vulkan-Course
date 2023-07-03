@@ -38,16 +38,22 @@ namespace VkCourse
 			VkPhysicalDevice physicalDevice;
 			VkDevice logicalDevice;
 		} m_device;
+		QueueFamilyIndices m_queueFamilyIndices;
 		VkQueue m_graphicsQueue;
 		VkQueue m_presentationQueue;
 		VkSurfaceKHR m_surface;
 		VkSwapchainKHR m_swapchain;
 		std::vector<SwapchainImage> m_swapchainImages{};
+		std::vector<VkFramebuffer> m_swapchainFramebuffers{};
+		std::vector<VkCommandBuffer> m_commandBuffers{};
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
 		VkPipelineLayout m_pipelineLayout;
 		VkRenderPass m_renderPass;
+
+		// Pools
+		VkCommandPool m_graphicsCommandPool;
 
 		// Secondary Vulkan components
 		VkFormat m_swapchainImageFormat;
@@ -61,6 +67,13 @@ namespace VkCourse
 		void create_swapchain();
 		void create_render_pass();
 		void create_graphics_pipeline();
+		void create_framebuffers();
+		void create_command_pool();
+		void create_command_buffers();
+		
+
+		// - Record functions
+		void record_commands();
 
 		// - Get/Obtain functions
 		// Not a getter, obtains the physical device to initialize m_device.physicalDevice
