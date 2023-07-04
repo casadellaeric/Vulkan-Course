@@ -1,7 +1,11 @@
 #pragma once
 
+#include <vulkan/vulkan.h>
+
+#include <vector>
 #include <fstream>
 #include <string_view>
+#include <glm/glm.hpp>
 
 namespace VkCourse
 {
@@ -9,7 +13,12 @@ namespace VkCourse
 	constexpr unsigned int MAX_FRAME_DRAWS{ 2 };
 
 	const std::vector<const char*> requestedDeviceExtensionNames{
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	};
+
+	struct Vertex {
+		glm::vec3 position;
+		glm::vec3 color;		// RGB
 	};
 
 	// Indices of queue families (-1 if invalid)

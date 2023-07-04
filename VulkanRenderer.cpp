@@ -31,6 +31,15 @@ namespace VkCourse
 			create_surface();
 			obtain_physical_device();
 			create_logical_device();
+
+			// Create a mesh
+			std::vector<Vertex> meshVertices{
+				{{ 0.f, -0.4f, 0.f }, {1.f, 0.f, 0.f}},	// position, color
+				{{ 0.3f, 0.4f, 0.f }, {0.f, 1.f, 0.f}},
+				{{-0.3f, 0.4f, 0.f }, {0.f, 0.f, 1.f}}
+			};
+			m_firstMesh = Mesh(m_device.physicalDevice, m_device.logicalDevice, &meshVertices);
+
 			create_swapchain();
 			create_render_pass();
 			create_graphics_pipeline();
@@ -52,13 +61,13 @@ namespace VkCourse
 	void VulkanRenderer::draw()
 	{
 		// Wait before the previous render to the current frame has finished to start, and close it (unsignal fence)
-		vkWaitForFences(m_device.logicalDevice, 1, &m_fencesDraw[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
-		vkResetFences(m_device.logicalDevice, 1, &m_fencesDraw[currentFrame]);
+		vkWaitForFences(m_device.logicalDevice, 1, &m_fencesDraw[m_currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
+		vkResetFences(m_device.logicalDevice, 1, &m_fencesDraw[m_currentFrame]);
 
 		// Get a new image to render to, get a semaphore to know when the image is available
 		uint32_t imageIndex;
 		vkAcquireNextImageKHR(m_device.logicalDevice, m_swapchain, std::numeric_limits<uint64_t>::max(), 
-			m_semaphoresImageAvailable[currentFrame], VK_NULL_HANDLE, &imageIndex);
+			m_semaphoresImageAvailable[m_currentFrame], VK_NULL_HANDLE, &imageIndex);
 
 		// Submit a command buffer to queue, wait for semaphore and signal after
 		VkPipelineStageFlags pipelineWaitStages[]{	// Stages to wait at for the given semaphores
@@ -68,16 +77,16 @@ namespace VkCourse
 		VkSubmitInfo submitInfo{
 			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &m_semaphoresImageAvailable[currentFrame],
+			.pWaitSemaphores = &m_semaphoresImageAvailable[m_currentFrame],
 			.pWaitDstStageMask = pipelineWaitStages,
 			.commandBufferCount = 1,
 			.pCommandBuffers = &m_commandBuffers[imageIndex],
 			.signalSemaphoreCount = 1,		// This will be signaled when the command buffer is finished
-			.pSignalSemaphores = &m_semaphoresRenderFinished[currentFrame],
+			.pSignalSemaphores = &m_semaphoresRenderFinished[m_currentFrame],
 		};
 
 		// Submit commands to the queue, signal the fence so that the next access to the same frame can start rendering
-		VkResult result{ vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_fencesDraw[currentFrame])};
+		VkResult result{ vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_fencesDraw[m_currentFrame])};
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to subit command buffer to graphics queue!");
@@ -87,7 +96,7 @@ namespace VkCourse
 		VkPresentInfoKHR presentInfo{
 			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &m_semaphoresRenderFinished[currentFrame],
+			.pWaitSemaphores = &m_semaphoresRenderFinished[m_currentFrame],
 			.swapchainCount = 1,
 			.pSwapchains = &m_swapchain,
 			.pImageIndices = &imageIndex,
@@ -99,7 +108,7 @@ namespace VkCourse
 			throw std::runtime_error("Failed to present image!");
 		}
 
-		currentFrame = (currentFrame + 1) % MAX_FRAME_DRAWS;
+		m_currentFrame = (m_currentFrame + 1) % MAX_FRAME_DRAWS;
 	}
 
 	void VulkanRenderer::destroy()
@@ -109,6 +118,7 @@ namespace VkCourse
 		// Wait for the device to be idle before destroying semaphores, command pools...
 		vkDeviceWaitIdle(m_device.logicalDevice);
 
+		m_firstMesh.destroy_vertex_buffer();
 		for (size_t i = 0; i < MAX_FRAME_DRAWS; ++i) {
 			vkDestroySemaphore(m_device.logicalDevice, m_semaphoresRenderFinished[i], nullptr);
 			vkDestroySemaphore(m_device.logicalDevice, m_semaphoresImageAvailable[i], nullptr);
@@ -424,14 +434,37 @@ namespace VkCourse
 			fragmentShaderStageCreateInfo 
 		};
 
-		// Create pipeline
+		// How the data for a single vertex (position, color, etc.) is as a whole
+		VkVertexInputBindingDescription vertexInputBindingDescription{
+			.binding = 0,								// Can bind multiple streams of data, this defines which one
+			.stride = sizeof(Vertex),
+			.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,	// How to move between data after each vertex (in this case, next vertex)
+		};
+
+		// How the data for an attribute is defined within a vertex
+		std::array<VkVertexInputAttributeDescription, 2> vertexInputAttributeDescriptions{};
+		// Position
+		vertexInputAttributeDescriptions[0] = {
+			.location = 0,							// Should match in the vertex shader
+			.binding = 0,							// Should be same as above (unless multiple streams of data)
+			.format = VK_FORMAT_R32G32B32_SFLOAT,	// Format the data will take + size
+			.offset = offsetof(Vertex, position),
+		};
+		// Color
+		vertexInputAttributeDescriptions[1] = {
+			.location = 1,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32_SFLOAT,
+			.offset = offsetof(Vertex, color),
+		};
+
 		// -- Vertex input --
 		VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-			.vertexBindingDescriptionCount = 0,
-			.pVertexBindingDescriptions = nullptr,		// e.g. data spacing, stride...
-			.vertexAttributeDescriptionCount = 0,
-			.pVertexAttributeDescriptions = nullptr	// data format, where to bind to/from
+			.vertexBindingDescriptionCount = 1,
+			.pVertexBindingDescriptions = &vertexInputBindingDescription,				// e.g. data spacing, stride...
+			.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexInputAttributeDescriptions.size()),
+			.pVertexAttributeDescriptions = vertexInputAttributeDescriptions.data(),	// data format, where to bind to/from
 		};
 
 		// -- Input Assembly --
@@ -695,7 +728,12 @@ namespace VkCourse
 				vkCmdBeginRenderPass(m_commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE); // INLINE: All commands are primary
 				{
 					vkCmdBindPipeline(m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
-					vkCmdDraw(m_commandBuffers[i], 3, 1, 0, 0); // cb, num verts, num inst, first vert, first inst
+
+					VkBuffer vertexBuffers[]{ m_firstMesh.get_vertex_buffer() };	// Buffers to bind
+					VkDeviceSize offsets[]{ 0 };
+					vkCmdBindVertexBuffers(m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
+
+					vkCmdDraw(m_commandBuffers[i], m_firstMesh.get_vertex_count(), 1, 0, 0); // cb, num verts, num inst, first vert, first inst
 				}
 				vkCmdEndRenderPass(m_commandBuffers[i]);
 			}

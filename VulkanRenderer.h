@@ -2,6 +2,7 @@
 
 #include "Window.h"
 #include "Utilities.h"
+#include "Mesh.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE // Specific to Vulkan, as opposed to -1 to 1 (OpenGL)
@@ -34,7 +35,10 @@ namespace VkCourse
 		const Window& m_window;
 
 		// Keeps track of which frame between 0 and MAX_FRAMES - 1, is being rendered to inside draw()
-		unsigned int currentFrame{ 0 };
+		unsigned int m_currentFrame{ 0 };
+
+		// Scene objects
+		Mesh m_firstMesh;
 
 		// Main Vulkan components
 		VkInstance m_instance;
