@@ -64,4 +64,122 @@ namespace VkCourse
 
 		return fileBuffer;
 	}
+
+	inline uint32_t find_memory_type_index(VkPhysicalDevice physicalDevice, uint32_t allowedTypes, VkMemoryPropertyFlags memoryPropertyFlags)
+	{
+		// Get properties of physical device memory
+		VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
+
+		for (uint32_t i = 0; i < physicalDeviceMemoryProperties.memoryTypeCount; ++i)
+		{
+			// Each memory type corresponds to one bit in the bit field allowedTypes
+			if ((allowedTypes & (1 << i))
+				// memoryTypes[i].properties is equal to the parameter memoryPropertyFlags
+				&& ((physicalDeviceMemoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlags) == memoryPropertyFlags))
+			{
+				return i;
+			}
+		}
+
+		throw std::runtime_error("Failed to find memory type with requested properties!");
+	}
+
+	inline void create_buffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize bufferSize, 
+		VkBufferUsageFlags bufferUsageFlags, VkMemoryPropertyFlags memoryPropertyFlags, VkBuffer* buffer, 
+		VkDeviceMemory* bufferMemory)
+	{
+		VkBufferCreateInfo bufferCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = bufferSize,
+			.usage = bufferUsageFlags,
+			.sharingMode = VK_SHARING_MODE_EXCLUSIVE,		// Should not be used by multiple queues
+		};
+
+		VkResult result{ vkCreateBuffer(device, &bufferCreateInfo, nullptr, buffer) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create a vertex buffer!");
+		}
+
+		// Get buffer memory requirements
+		VkMemoryRequirements memoryRequirements;
+		vkGetBufferMemoryRequirements(device, *buffer, &memoryRequirements);
+
+		// Allocate memory to buffer
+		VkMemoryAllocateInfo memoryAllocateInfo{
+			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+			.allocationSize = memoryRequirements.size,
+			.memoryTypeIndex = find_memory_type_index(physicalDevice, memoryRequirements.memoryTypeBits, memoryPropertyFlags),
+		};
+
+		// Allocate memory to VkDeviceMemory
+		result = vkAllocateMemory(device, &memoryAllocateInfo, nullptr, bufferMemory);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate vertex buffer memory!");
+		}
+
+		// Allocate memory to given vertex buffer
+		vkBindBufferMemory(device, *buffer, *bufferMemory, 0);
+	}
+
+	inline void copy_buffer(VkDevice device, VkQueue transferQueue, VkCommandPool transferCommandPool, 
+		VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize bufferSize)
+	{
+		// Command buffer to hold transfer commands
+		VkCommandBuffer transferCommandBuffer;
+
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			.commandPool = transferCommandPool,
+			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+			.commandBufferCount = 1,
+		};
+
+		VkResult result{ vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &transferCommandBuffer) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate transfer command buffer!");
+		}
+
+		VkCommandBufferBeginInfo commandBufferBeginInfo{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,	// Only using it once to transfer
+		};
+
+		// Begin recording transfer commands
+		result = vkBeginCommandBuffer(transferCommandBuffer, &commandBufferBeginInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to start recording a command buffer!");
+		}
+
+		// Region of data to copy from and to
+		VkBufferCopy bufferCopyRegion{
+			.srcOffset = 0,
+			.dstOffset = 0,
+			.size = bufferSize,
+		};
+
+		// Copy source buffer to destination buffer
+		vkCmdCopyBuffer(transferCommandBuffer, srcBuffer, dstBuffer, 1, &bufferCopyRegion);
+		vkEndCommandBuffer(transferCommandBuffer);
+
+		// Queue submission information
+		VkSubmitInfo submitInfo{
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &transferCommandBuffer,
+		};
+
+		vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
+
+		// We wait here to avoid submitting too many command buffers and crashing the program if we had many calls to copy_buffer()
+		vkQueueWaitIdle(transferQueue);
+
+		// Free temporary command buffer back to command pool
+		vkFreeCommandBuffers(device, transferCommandPool, 1, &transferCommandBuffer);
+	}
+
 }

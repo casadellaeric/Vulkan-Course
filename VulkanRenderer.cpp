@@ -1,5 +1,6 @@
 #include "VulkanRenderer.h"
 #include "Utilities.h"
+#include "Mesh.h"
 
 #include <vulkan/vulkan.h>
 
@@ -31,20 +32,41 @@ namespace VkCourse
 			create_surface();
 			obtain_physical_device();
 			create_logical_device();
-
-			// Create a mesh
-			std::vector<Vertex> meshVertices{
-				{{ 0.f, -0.4f, 0.f }, {1.f, 0.f, 0.f}},	// position, color
-				{{ 0.3f, 0.4f, 0.f }, {0.f, 1.f, 0.f}},
-				{{-0.3f, 0.4f, 0.f }, {0.f, 0.f, 1.f}}
-			};
-			m_firstMesh = Mesh(m_device.physicalDevice, m_device.logicalDevice, &meshVertices);
-
 			create_swapchain();
 			create_render_pass();
 			create_graphics_pipeline();
 			create_framebuffers();
 			create_command_pool();
+			
+			// Create a mesh
+			std::vector<Vertex> meshVertices{
+				{{ -0.6f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},	// position, color
+				{{ -0.1f,  0.4f,  0.f }, {  0.f,  1.f,  0.f }},
+				{{ -0.1f, -0.4f,  0.f }, {  1.f,  1.f,  0.f }},
+				{{ -0.6f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
+			};
+
+			std::vector<Vertex> meshVertices2{
+				{{  0.0f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},	// position, color
+				{{  0.7f,  0.4f,  0.f }, {  0.f,  1.f,  0.f }},
+				{{  0.7f, -0.4f,  0.f }, {  1.f,  1.f,  0.f }},
+				{{  0.0f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
+			};
+			
+			std::vector<uint32_t> meshIndices{
+				0, 3, 2,
+				2, 1, 0,
+			};
+
+			m_meshes.reserve(2);
+
+			// Mesh constructor
+			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
+				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices);
+			
+			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
+				m_graphicsQueue, m_graphicsCommandPool, &meshVertices2, &meshIndices);
+
 			create_command_buffers();
 			record_commands();
 			create_synchronization();
@@ -118,7 +140,10 @@ namespace VkCourse
 		// Wait for the device to be idle before destroying semaphores, command pools...
 		vkDeviceWaitIdle(m_device.logicalDevice);
 
-		m_firstMesh.destroy_vertex_buffer();
+		for (auto& mesh : m_meshes)
+		{
+			mesh.destroy_buffers();
+		}
 		for (size_t i = 0; i < MAX_FRAME_DRAWS; ++i) {
 			vkDestroySemaphore(m_device.logicalDevice, m_semaphoresRenderFinished[i], nullptr);
 			vkDestroySemaphore(m_device.logicalDevice, m_semaphoresImageAvailable[i], nullptr);
@@ -729,11 +754,15 @@ namespace VkCourse
 				{
 					vkCmdBindPipeline(m_commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
-					VkBuffer vertexBuffers[]{ m_firstMesh.get_vertex_buffer() };	// Buffers to bind
-					VkDeviceSize offsets[]{ 0 };
-					vkCmdBindVertexBuffers(m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
-
-					vkCmdDraw(m_commandBuffers[i], m_firstMesh.get_vertex_count(), 1, 0, 0); // cb, num verts, num inst, first vert, first inst
+					for (size_t j = 0; j < m_meshes.size(); ++j)
+					{
+						VkBuffer vertexBuffers[]{ m_meshes[j].get_vertex_buffer()};	// Buffers to bind
+						VkDeviceSize offsets[]{ 0 };
+						vkCmdBindVertexBuffers(m_commandBuffers[i], 0, 1, vertexBuffers, offsets);
+						vkCmdBindIndexBuffer(m_commandBuffers[i], m_meshes[j].get_index_buffer(), 0, VK_INDEX_TYPE_UINT32);
+					
+						vkCmdDrawIndexed(m_commandBuffers[i], m_meshes[j].get_index_count(), 1, 0, 0, 0);
+					}
 				}
 				vkCmdEndRenderPass(m_commandBuffers[i]);
 			}

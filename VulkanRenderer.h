@@ -38,7 +38,7 @@ namespace VkCourse
 		unsigned int m_currentFrame{ 0 };
 
 		// Scene objects
-		Mesh m_firstMesh;
+		std::vector<Mesh> m_meshes{};
 
 		// Main Vulkan components
 		VkInstance m_instance;
