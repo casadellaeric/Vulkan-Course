@@ -1,7 +1,5 @@
 #include "Mesh.h"
 
-#include <iostream>
-
 VkCourse::Mesh::Mesh()
 {
 }
@@ -16,17 +14,14 @@ VkCourse::Mesh::Mesh(VkPhysicalDevice physicalDevice, VkDevice device,
 	m_device.logicalDevice = device;
 	create_vertex_buffer(transferQueue, transferCommandPool, vertices);
 	create_index_buffer(transferQueue, transferCommandPool, indices);
-	std::cout << "Mesh buffers created" << std::endl;
 }
 
 VkCourse::Mesh::~Mesh()
 {
-	std::cout << " Mesh destructor called" << std::endl;
 }
 
 void VkCourse::Mesh::destroy_buffers()
 {
-	std::cout << "Mesh buffers destroyed" << std::endl;
 	vkDestroyBuffer(m_device.logicalDevice, m_vertexBuffer, nullptr);
 	vkFreeMemory(m_device.logicalDevice, m_vertexBufferMemory, nullptr);
 

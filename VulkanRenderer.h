@@ -7,6 +7,7 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE // Specific to Vulkan, as opposed to -1 to 1 (OpenGL)
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace VkCourse
 {
@@ -31,6 +32,8 @@ namespace VkCourse
 		void draw();
 		void destroy();
 
+		void update_model_matrix(glm::mat4 modelMatrix);
+
 	private:
 		const Window& m_window;
 
@@ -39,6 +42,13 @@ namespace VkCourse
 
 		// Scene objects
 		std::vector<Mesh> m_meshes{};
+
+		// Scene settings
+		struct MVP {
+			glm::mat4 model;
+			glm::mat4 view;
+			glm::mat4 projection;
+		} m_mvp;
 
 		// Main Vulkan components
 		VkInstance m_instance;
@@ -54,6 +64,15 @@ namespace VkCourse
 		std::vector<SwapchainImage> m_swapchainImages{};
 		std::vector<VkFramebuffer> m_swapchainFramebuffers{};
 		std::vector<VkCommandBuffer> m_commandBuffers{};
+
+		// Descriptors
+		VkDescriptorSetLayout m_descriptorSetLayout;
+
+		VkDescriptorPool m_descriptorPool;
+		std::vector<VkDescriptorSet> m_descriptorSets{};
+
+		std::vector<VkBuffer> m_uniformBuffers{};
+		std::vector<VkDeviceMemory> m_uniformBufferMemories{};
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
@@ -79,11 +98,18 @@ namespace VkCourse
 		void create_surface();
 		void create_swapchain();
 		void create_render_pass();
+		void create_descriptor_set_layout();
 		void create_graphics_pipeline();
 		void create_framebuffers();
 		void create_command_pool();
 		void create_command_buffers();
 		void create_synchronization();
+
+		void create_uniform_buffers();
+		void create_descriptor_pool();
+		void create_descriptor_sets();
+
+		void update_uniform_buffers(uint32_t imageIndex);
 
 		// - Record functions
 		void record_commands();
