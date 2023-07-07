@@ -8,6 +8,10 @@
 
 namespace VkCourse {
 
+	struct UboModel {
+		glm::mat4 model;
+	};
+
 	class Mesh
 	{
 	public:
@@ -26,7 +30,12 @@ namespace VkCourse {
 		VkBuffer get_vertex_buffer();
 		VkBuffer get_index_buffer();
 
+		void set_model(glm::mat4 modelMatrix);
+		UboModel get_model_matrix();
+
 	private:
+		UboModel m_uboModel;
+
 		uint32_t m_vertexCount{};
 		VkBuffer m_vertexBuffer;
 		VkDeviceMemory m_vertexBufferMemory;

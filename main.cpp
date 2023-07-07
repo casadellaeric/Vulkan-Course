@@ -36,7 +36,7 @@ int main()
 
 				if (addedFrameTime > 1.f)
 				{
-					std::cout << frameCount / addedFrameTime;
+					std::cout << frameCount / addedFrameTime << std::endl;
 					addedFrameTime -= 1.f;
 					frameCount = 0;
 				}
@@ -48,7 +48,18 @@ int main()
 					angle -= 360.f;
 				}
 				
-				vulkanRenderer.update_model_matrix(glm::rotate(glm::mat4(1.f), glm::radians(angle), glm::vec3(0.f, 0.f, 1.f)));
+				glm::mat4 firstModel(1.f);
+				glm::mat4 secondModel(1.f);
+
+				firstModel = glm::translate(firstModel, glm::vec3(0.f, 0.f, 1.f));
+				firstModel = glm::rotate(firstModel, glm::radians(angle), glm::vec3(0.f, 0.f, 1.f));
+
+				secondModel = glm::translate(secondModel, glm::vec3(1.f, 0.f, 0.f));
+				secondModel = glm::rotate(secondModel, glm::radians(-angle * 10), glm::vec3(0.f, 0.f, 1.f));
+
+				vulkanRenderer.update_model_matrix(0, firstModel);
+				vulkanRenderer.update_model_matrix(1, secondModel);
+
 				vulkanRenderer.draw();
 				frameCount++;
 			}

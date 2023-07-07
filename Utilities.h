@@ -12,6 +12,9 @@ namespace VkCourse
 	// Number of simultaneous frames that can be in use
 	constexpr unsigned int MAX_FRAME_DRAWS{ 2 };
 
+	// Used to allocate memory for enough dynamic uniform buffers
+	constexpr unsigned int MAX_OBJECTS{ 2 };
+
 	const std::vector<const char*> requestedDeviceExtensionNames{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	};

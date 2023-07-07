@@ -14,6 +14,7 @@ VkCourse::Mesh::Mesh(VkPhysicalDevice physicalDevice, VkDevice device,
 	m_device.logicalDevice = device;
 	create_vertex_buffer(transferQueue, transferCommandPool, vertices);
 	create_index_buffer(transferQueue, transferCommandPool, indices);
+	m_uboModel = { .model = glm::mat4(1.f) };
 }
 
 VkCourse::Mesh::~Mesh()
@@ -47,6 +48,16 @@ VkBuffer VkCourse::Mesh::get_vertex_buffer()
 VkBuffer VkCourse::Mesh::get_index_buffer()
 {
 	return m_indexBuffer;
+}
+
+void VkCourse::Mesh::set_model(glm::mat4 modelMatrix)
+{
+	m_uboModel.model = modelMatrix;
+}
+
+VkCourse::UboModel VkCourse::Mesh::get_model_matrix()
+{
+	return m_uboModel;
 }
 
 void VkCourse::Mesh::create_vertex_buffer(VkQueue transferQueue, VkCommandPool transferCommandPool,

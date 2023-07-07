@@ -32,7 +32,7 @@ namespace VkCourse
 		void draw();
 		void destroy();
 
-		void update_model_matrix(glm::mat4 modelMatrix);
+		void update_model_matrix(unsigned int modelId, glm::mat4 modelMatrix);
 
 	private:
 		const Window& m_window;
@@ -44,11 +44,10 @@ namespace VkCourse
 		std::vector<Mesh> m_meshes{};
 
 		// Scene settings
-		struct MVP {
-			glm::mat4 model;
+		struct UboViewProjection {
 			glm::mat4 view;
 			glm::mat4 projection;
-		} m_mvp;
+		} m_uboViewProjection;
 
 		// Main Vulkan components
 		VkInstance m_instance;
@@ -71,8 +70,16 @@ namespace VkCourse
 		VkDescriptorPool m_descriptorPool;
 		std::vector<VkDescriptorSet> m_descriptorSets{};
 
-		std::vector<VkBuffer> m_uniformBuffers{};
-		std::vector<VkDeviceMemory> m_uniformBufferMemories{};
+		std::vector<VkBuffer> m_vpUniformBuffers{};
+		std::vector<VkDeviceMemory> m_vpUniformBufferMemories{};
+
+		std::vector<VkBuffer> m_modelDynamicUniformBuffers{};
+		std::vector<VkDeviceMemory> m_modelDynamicUniformBufferMemories{};
+
+		VkDeviceSize m_minUniformBufferOffset;
+		size_t m_modelUniformAlignment{};
+
+		UboModel* m_modelTransferSpace{};
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
@@ -85,7 +92,7 @@ namespace VkCourse
 		// Secondary Vulkan components
 		VkFormat m_swapchainImageFormat;
 		VkExtent2D m_swapchainExtent;
-		
+
 		// Synchronization
 		std::vector<VkSemaphore> m_semaphoresImageAvailable{};
 		std::vector<VkSemaphore> m_semaphoresRenderFinished{};
@@ -119,6 +126,9 @@ namespace VkCourse
 		void obtain_physical_device();
 		QueueFamilyIndices get_queue_family_indices(const VkPhysicalDevice& device) const;
 		SwapchainDetails get_swap_chain_details(const VkPhysicalDevice& device) const;
+
+		// Allocate functions
+		void allocate_dynamic_buffer_transfer_space();
 
 		// - Support functions
 		// -- Check functions
