@@ -8,7 +8,7 @@
 
 namespace VkCourse {
 
-	struct UboModel {
+	struct Model {
 		glm::mat4 model;
 	};
 
@@ -31,10 +31,10 @@ namespace VkCourse {
 		VkBuffer get_index_buffer();
 
 		void set_model(glm::mat4 modelMatrix);
-		UboModel get_model_matrix();
+		Model& get_model_matrix();
 
 	private:
-		UboModel m_uboModel;
+		Model m_model;
 
 		uint32_t m_vertexCount{};
 		VkBuffer m_vertexBuffer;

@@ -66,6 +66,7 @@ namespace VkCourse
 
 		// Descriptors
 		VkDescriptorSetLayout m_descriptorSetLayout;
+		VkPushConstantRange m_pushConstantRange;
 
 		VkDescriptorPool m_descriptorPool;
 		std::vector<VkDescriptorSet> m_descriptorSets{};
@@ -73,13 +74,13 @@ namespace VkCourse
 		std::vector<VkBuffer> m_vpUniformBuffers{};
 		std::vector<VkDeviceMemory> m_vpUniformBufferMemories{};
 
-		std::vector<VkBuffer> m_modelDynamicUniformBuffers{};
-		std::vector<VkDeviceMemory> m_modelDynamicUniformBufferMemories{};
+		// std::vector<VkBuffer> m_modelDynamicUniformBuffers{};
+		// std::vector<VkDeviceMemory> m_modelDynamicUniformBufferMemories{};
 
-		VkDeviceSize m_minUniformBufferOffset;
-		size_t m_modelUniformAlignment{};
+		// VkDeviceSize m_minUniformBufferOffset;
+		// size_t m_modelUniformAlignment{};
 
-		UboModel* m_modelTransferSpace{};
+		// Model* m_modelTransferSpace{};
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
@@ -106,6 +107,7 @@ namespace VkCourse
 		void create_swapchain();
 		void create_render_pass();
 		void create_descriptor_set_layout();
+		void create_push_constant_range();
 		void create_graphics_pipeline();
 		void create_framebuffers();
 		void create_command_pool();
@@ -119,7 +121,7 @@ namespace VkCourse
 		void update_uniform_buffers(uint32_t imageIndex);
 
 		// - Record functions
-		void record_commands();
+		void record_commands(uint32_t imageIndex);
 
 		// - Get/Obtain functions
 		// Not a getter, obtains the physical device to initialize m_device.physicalDevice
