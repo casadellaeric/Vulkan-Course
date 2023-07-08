@@ -40,6 +40,8 @@ namespace VkCourse
 			create_graphics_pipeline();
 			create_framebuffers();
 			create_command_pool();
+
+			size_t firstTexture{ create_texture("wiseTree.png") };
 			
 			// Fill mvp
 			m_uboViewProjection.projection = glm::perspective(glm::radians(45.f),
@@ -158,6 +160,12 @@ namespace VkCourse
 		vkDeviceWaitIdle(m_device.logicalDevice);
 
 		//_aligned_free(m_modelTransferSpace);
+
+		for (size_t i = 0; i < m_textureImages.size(); ++i) 
+		{
+			vkDestroyImage(m_device.logicalDevice, m_textureImages[i], nullptr);
+			vkFreeMemory(m_device.logicalDevice, m_textureImageMemories[i], nullptr);
+		}
 
 		vkDestroyImageView(m_device.logicalDevice, m_depthBufferImageView, nullptr);
 		vkDestroyImage(m_device.logicalDevice, m_depthBufferImage, nullptr);
@@ -1444,6 +1452,70 @@ namespace VkCourse
 			throw std::runtime_error("Failed to create shader module!");
 		}
 		return shaderModule;
+	}
+
+	size_t VulkanRenderer::create_texture(const std::string& fileName)
+	{
+		// Load image file
+		int width, height;
+		VkDeviceSize imageSize;
+		stbi_uc* imageData{ load_texture_file(fileName, &width, &height, &imageSize) };
+
+		// We don't need host visible texture data, so we create staging buffer first
+		VkBuffer imageStagingBuffer;
+		VkDeviceMemory imageStagingBufferMemory;
+		create_buffer(m_device.physicalDevice, m_device.logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,	&imageStagingBuffer, &imageStagingBufferMemory);
+
+		void* data;
+		vkMapMemory(m_device.logicalDevice, imageStagingBufferMemory, 0, imageSize, 0, &data);
+		memcpy(data, imageData, static_cast<size_t>(imageSize));
+		vkUnmapMemory(m_device.logicalDevice, imageStagingBufferMemory);
+
+		// Free original image data now not in use
+		stbi_image_free(imageData);
+
+		VkDeviceMemory textureImageMemory;
+		VkImage textureImage{ create_image(width, height, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, 
+			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+			&textureImageMemory) };
+
+		// Force transition before transfer
+		transition_image_layout(m_device.logicalDevice, m_graphicsQueue, m_graphicsCommandPool, 
+			textureImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		copy_image_buffer(m_device.logicalDevice, m_graphicsQueue, m_graphicsCommandPool, 
+			imageStagingBuffer, textureImage, width, height);
+
+		transition_image_layout(m_device.logicalDevice, m_graphicsQueue, m_graphicsCommandPool,
+			textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		vkDestroyBuffer(m_device.logicalDevice, imageStagingBuffer, nullptr);
+		vkFreeMemory(m_device.logicalDevice, imageStagingBufferMemory, nullptr);
+
+		m_textureImages.push_back(textureImage);
+		m_textureImageMemories.push_back(textureImageMemory);
+
+		return (m_textureImages.size() - 1);
+	}
+
+	stbi_uc* VulkanRenderer::load_texture_file(const std::string& fileName, int* width, int* height, VkDeviceSize* imageSize)
+	{
+		// Number of channels image uses
+		int channels;
+		const auto desiredChannels{ STBI_rgb_alpha };
+
+		const std::string fileLoc{ "Textures/" + fileName };
+		stbi_uc* image{ stbi_load(fileLoc.c_str(), width, height, &channels, desiredChannels) };
+
+		if (!image)
+		{
+			throw std::runtime_error("Failed to load texture file " + fileName + "!");
+		}
+
+		*imageSize = static_cast<VkDeviceSize>(*width * *height * desiredChannels);
+
+		return image;
 	}
 
 	bool VulkanRenderer::check_validation_layer_support(const std::vector<const char*>& requestedValidationLayerNames) const

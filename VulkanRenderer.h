@@ -4,6 +4,8 @@
 #include "Utilities.h"
 #include "Mesh.h"
 
+#include "stb_image.h"
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE // Specific to Vulkan, as opposed to -1 to 1 (OpenGL)
 #include <glm/glm.hpp>
@@ -81,11 +83,13 @@ namespace VkCourse
 
 		// std::vector<VkBuffer> m_modelDynamicUniformBuffers{};
 		// std::vector<VkDeviceMemory> m_modelDynamicUniformBufferMemories{};
-
 		// VkDeviceSize m_minUniformBufferOffset;
 		// size_t m_modelUniformAlignment{};
-
 		// Model* m_modelTransferSpace{};
+
+		// Assets
+		std::vector<VkImage> m_textureImages{};
+		std::vector<VkDeviceMemory> m_textureImageMemories{};		// An optimal layout would have only one memory accessed with offsets
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
@@ -157,5 +161,10 @@ namespace VkCourse
 			VkMemoryPropertyFlags memoryPropertyFlags, VkDeviceMemory* imageMemory);
 		VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 		VkShaderModule create_shader_module(const std::vector<char>& code);
+
+		size_t create_texture(const std::string& fileName);
+
+		// -- Loader functions
+		stbi_uc* load_texture_file(const std::string& fileName, int* width, int* height, VkDeviceSize* imageSize);
 	};
 }

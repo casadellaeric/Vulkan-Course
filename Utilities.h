@@ -127,20 +127,19 @@ namespace VkCourse
 		vkBindBufferMemory(device, *buffer, *bufferMemory, 0);
 	}
 
-	inline void copy_buffer(VkDevice device, VkQueue transferQueue, VkCommandPool transferCommandPool, 
-		VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize bufferSize)
+	inline VkCommandBuffer begin_command_buffer(VkDevice device, VkCommandPool commandPool)
 	{
 		// Command buffer to hold transfer commands
-		VkCommandBuffer transferCommandBuffer;
+		VkCommandBuffer commandBuffer;
 
 		VkCommandBufferAllocateInfo commandBufferAllocateInfo{
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-			.commandPool = transferCommandPool,
+			.commandPool = commandPool,
 			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 			.commandBufferCount = 1,
 		};
 
-		VkResult result{ vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &transferCommandBuffer) };
+		VkResult result{ vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer) };
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to allocate transfer command buffer!");
@@ -152,11 +151,39 @@ namespace VkCourse
 		};
 
 		// Begin recording transfer commands
-		result = vkBeginCommandBuffer(transferCommandBuffer, &commandBufferBeginInfo);
+		result = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to start recording a command buffer!");
 		}
+
+		return commandBuffer;
+	}
+
+	inline void end_and_submit_command_buffer(VkDevice device, VkCommandPool commandPool, VkQueue queue, VkCommandBuffer commandBuffer)
+	{
+		vkEndCommandBuffer(commandBuffer);
+
+		// Queue submission information
+		VkSubmitInfo submitInfo{
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+			.commandBufferCount = 1,
+			.pCommandBuffers = &commandBuffer,
+		};
+
+		vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+
+		// We wait here to avoid submitting too many command buffers and crashing the program if we had many calls to copy_buffer()
+		vkQueueWaitIdle(queue);
+
+		// Free temporary command buffer back to command pool
+		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+	}
+
+	inline void copy_buffer(VkDevice device, VkQueue transferQueue, VkCommandPool transferCommandPool, 
+		VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize bufferSize)
+	{
+		VkCommandBuffer transferCommandBuffer{ begin_command_buffer(device, transferCommandPool) };
 
 		// Region of data to copy from and to
 		VkBufferCopy bufferCopyRegion{
@@ -167,22 +194,95 @@ namespace VkCourse
 
 		// Copy source buffer to destination buffer
 		vkCmdCopyBuffer(transferCommandBuffer, srcBuffer, dstBuffer, 1, &bufferCopyRegion);
-		vkEndCommandBuffer(transferCommandBuffer);
 
-		// Queue submission information
-		VkSubmitInfo submitInfo{
-			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-			.commandBufferCount = 1,
-			.pCommandBuffers = &transferCommandBuffer,
-		};
-
-		vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
-
-		// We wait here to avoid submitting too many command buffers and crashing the program if we had many calls to copy_buffer()
-		vkQueueWaitIdle(transferQueue);
-
-		// Free temporary command buffer back to command pool
-		vkFreeCommandBuffers(device, transferCommandPool, 1, &transferCommandBuffer);
+		end_and_submit_command_buffer(device, transferCommandPool, transferQueue, transferCommandBuffer);
 	}
 
+	inline void copy_image_buffer(VkDevice device, VkQueue transferQueue, VkCommandPool transferCommandPool,
+		VkBuffer srcBuffer, VkImage dstImage, uint32_t width, uint32_t height)
+	{
+		VkCommandBuffer transferCommandBuffer{ begin_command_buffer(device, transferCommandPool) };
+
+		VkBufferImageCopy bufferImageCopyRegion{
+			.bufferOffset = 0,
+			.bufferRowLength = 0,		// For data spacing calculation (if 0 --> tightly packed)
+			.bufferImageHeight = 0,
+			.imageSubresource{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+			.imageOffset{ 0, 0, 0 }, 
+			.imageExtent{
+				.width = width,
+				.height = height,
+				.depth = 1,
+			},
+		};
+
+		vkCmdCopyBufferToImage(transferCommandBuffer, srcBuffer, dstImage, 
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &bufferImageCopyRegion);
+
+		end_and_submit_command_buffer(device, transferCommandPool, transferQueue, transferCommandBuffer);
+	}
+
+	inline void transition_image_layout(VkDevice device, VkQueue queue, VkCommandPool commandPool, 
+		VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
+	{
+		VkCommandBuffer commandBuffer{ begin_command_buffer(device, commandPool) };
+
+		VkImageMemoryBarrier imageMemoryBarrier{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.oldLayout = oldLayout,
+			.newLayout = newLayout,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,		// Queue family to transition from
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,		// Queue family to transition to
+			.image = image,
+			.subresourceRange{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = 1,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+		};
+
+		VkPipelineStageFlags srcStage{};
+		VkPipelineStageFlags dstStage{};
+
+		// If transitioning from new image to image ready to receive data
+		if(oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+		{
+			imageMemoryBarrier.srcAccessMask = 0;								// Transition must happen after any stage
+			imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;		// Transition must happen before the transfer
+
+			srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		}
+		// If transitioning from transfer destination to shader readable
+		else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+		{
+			imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+			srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else
+		{
+			throw std::runtime_error("Unspecified layouts in transition_image_layout()!");
+		}
+
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			srcStage, dstStage,		// Pipeline stages (match to src and dst access masks previously specified)
+			0,						// Dependency flags
+			0, nullptr,				// Memory barrier + data
+			0, nullptr,				// Buffer memory barrier + data
+			1, &imageMemoryBarrier	// Image memory barrier + data
+		);
+
+		end_and_submit_command_buffer(device, commandPool, queue, commandBuffer);
+	}
 }
