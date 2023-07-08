@@ -33,6 +33,7 @@ namespace VkCourse
 			obtain_physical_device();
 			create_logical_device();
 			create_swapchain();
+			create_depth_buffer_image();
 			create_render_pass();
 			create_descriptor_set_layout();
 			create_push_constant_range();
@@ -50,10 +51,17 @@ namespace VkCourse
 
 			// Create a mesh
 			std::vector<Vertex> meshVertices{
-				{{ -0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},	// position, color
-				{{  0.2f,  0.4f,  0.f }, {  0.f,  1.f,  0.f }},
-				{{  0.2f, -0.4f,  0.f }, {  1.f,  1.f,  0.f }},
+				{{ -0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }},	// position, color
+				{{  0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }},
+				{{  0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
 				{{ -0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
+			};
+
+			std::vector<Vertex> meshVertices2{
+				{{ -0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},	// position, color
+				{{  0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},
+				{{  0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }},
+				{{ -0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }},
 			};
 			
 			std::vector<uint32_t> meshIndices{
@@ -68,7 +76,7 @@ namespace VkCourse
 				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices);
 			
 			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
-				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices);
+				m_graphicsQueue, m_graphicsCommandPool, &meshVertices2, &meshIndices);
 
 			create_command_buffers();
 			//allocate_dynamic_buffer_transfer_space();
@@ -150,6 +158,10 @@ namespace VkCourse
 		vkDeviceWaitIdle(m_device.logicalDevice);
 
 		//_aligned_free(m_modelTransferSpace);
+
+		vkDestroyImageView(m_device.logicalDevice, m_depthBufferImageView, nullptr);
+		vkDestroyImage(m_device.logicalDevice, m_depthBufferImage, nullptr);
+		vkFreeMemory(m_device.logicalDevice, m_depthBufferImageMemory, nullptr);
 
 		vkDestroyDescriptorPool(m_device.logicalDevice, m_descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(m_device.logicalDevice, m_descriptorSetLayout, nullptr);
@@ -390,6 +402,7 @@ namespace VkCourse
 
 	void VulkanRenderer::create_render_pass()
 	{
+		// Attachments
 		// Color attachment of render pass
 		VkAttachmentDescription colorAttachmentDescription{
 			.format = m_swapchainImageFormat,
@@ -402,21 +415,43 @@ namespace VkCourse
 			.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,		// Format to present to surface
 		};
 
+		// Depth attachment of render pass
+		VkAttachmentDescription depthAttachmentDescription{
+			.format = m_depthBufferFormat,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_NONE,
+			.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		};
+
+		std::array<VkAttachmentDescription, 2> renderPassAttachmentDescriptions{
+			colorAttachmentDescription, 
+			depthAttachmentDescription 
+		};
+
 		// Attachment reference uses an index to refer to the attachment passed to the renderPassCreateInfo
 		VkAttachmentReference colorAttachmentReference{
 			.attachment = 0,
 			.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		};
 
+		VkAttachmentReference depthAttachmentReference{
+			.attachment = 1,
+			.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		};
+
 		VkSubpassDescription subpassDescription{
 			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
 			.colorAttachmentCount = 1,
 			.pColorAttachments = &colorAttachmentReference,
+			.pDepthStencilAttachment = &depthAttachmentReference,
 		};
 
 		// Need to determine when layout transitions occur using subpass dependencies
-		std::array<VkSubpassDependency, 2> subpassDependencies;
-		subpassDependencies[0] = {};
+		std::array<VkSubpassDependency, 2> subpassDependencies{};
 		// Transition must happen after...
 		subpassDependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 		subpassDependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;		// This stage has to happen before the transition
@@ -427,7 +462,6 @@ namespace VkCourse
 		subpassDependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		subpassDependencies[0].dependencyFlags = 0;
 
-		subpassDependencies[1] = {};
 		// Transition must happen after...
 		subpassDependencies[1].srcSubpass = 0;
 		subpassDependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -440,8 +474,8 @@ namespace VkCourse
 
 		VkRenderPassCreateInfo renderPassCreateInfo{
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-			.attachmentCount = 1,
-			.pAttachments = &colorAttachmentDescription,
+			.attachmentCount = static_cast<uint32_t>(renderPassAttachmentDescriptions.size()),
+			.pAttachments = renderPassAttachmentDescriptions.data(),
 			.subpassCount = 1,
 			.pSubpasses = &subpassDescription,
 			.dependencyCount = static_cast<uint32_t>(subpassDependencies.size()),
@@ -662,7 +696,14 @@ namespace VkCourse
 			throw std::runtime_error("Failed to create pipeline layout!");
 		}
 
-		// TODO: set up depth/stencil testing
+		VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+			.depthTestEnable = VK_TRUE,
+			.depthWriteEnable = VK_TRUE,
+			.depthCompareOp = VK_COMPARE_OP_LESS,
+			.depthBoundsTestEnable = VK_FALSE,			// Check depth value is between bounds
+			.stencilTestEnable = VK_FALSE,
+		};
 		
 		// Final graphics pipeline
 		VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo{
@@ -674,7 +715,7 @@ namespace VkCourse
 			.pViewportState = &viewportStateCreateInfo,
 			.pRasterizationState = &rasterizationStateCreateInfo,
 			.pMultisampleState = &multisampleStateCreateInfo,
-			.pDepthStencilState = nullptr,
+			.pDepthStencilState = &depthStencilStateCreateInfo,
 			.pColorBlendState = &colorBlendStateCreateInfo,
 			.pDynamicState = nullptr,
 			.layout = m_pipelineLayout,
@@ -695,14 +736,31 @@ namespace VkCourse
 		vkDestroyShaderModule(m_device.logicalDevice, vertexShaderModule, nullptr);
 	}
 
+	void VulkanRenderer::create_depth_buffer_image()
+	{
+		// Supported format for depth buffer
+		m_depthBufferFormat = choose_supported_format(
+			{ VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT },
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+		);
+
+		m_depthBufferImage = create_image(m_swapchainExtent.width, m_swapchainExtent.height,
+			m_depthBufferFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_depthBufferImageMemory);
+
+		m_depthBufferImageView = create_image_view(m_depthBufferImage, m_depthBufferFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+	}
+
 	void VulkanRenderer::create_framebuffers()
 	{
 		// We want to create one framebuffer for each of the images of the swapchain
 		m_swapchainFramebuffers.resize(m_swapchainImages.size());
 		for (size_t i = 0; i < m_swapchainFramebuffers.size(); ++i)
 		{
-			std::array<VkImageView, 1> attachments{
+			std::array<VkImageView, 2> attachments{
 				m_swapchainImages[i].imageView,
+				m_depthBufferImageView
 			};
 
 			VkFramebufferCreateInfo framebufferCreateInfo{
@@ -947,9 +1005,9 @@ namespace VkCourse
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		};
 
-		VkClearValue clearValues[]{ 
-			{.color = { 0.6f, 0.65f, 0.4f, 1.f } },
-		};
+		std::array<VkClearValue, 2> clearValues{};
+		clearValues[0].color = { 0.6f, 0.65f, 0.4f, 1.f };	// 1st attachment (color)
+		clearValues[1].depthStencil.depth = 1.f;			// 2nd attachment (depth)
 
 		// Information about how to begin a render pass (only for grapics applications)
 		VkRenderPassBeginInfo renderPassBeginInfo{
@@ -959,8 +1017,8 @@ namespace VkCourse
 				.offset = { 0, 0 },
 				.extent = m_swapchainExtent,
 			},
-			.clearValueCount = 1,
-			.pClearValues = clearValues,
+			.clearValueCount = static_cast<uint32_t>(clearValues.size()),
+			.pClearValues = clearValues.data(),
 		};
 
 		VkResult result{ vkBeginCommandBuffer(m_commandBuffers[imageIndex], &commandBufferBeginInfo) };
@@ -1264,6 +1322,74 @@ namespace VkCourse
 		newExtent.height = std::clamp(newExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 
 		return newExtent;
+	}
+
+	VkFormat VulkanRenderer::choose_supported_format(const std::vector<VkFormat>& formatList, VkImageTiling imageTiling, VkFormatFeatureFlags featureFlags) const
+	{
+		for (VkFormat format : formatList)
+		{
+			VkFormatProperties formatProperties;
+			vkGetPhysicalDeviceFormatProperties(m_device.physicalDevice, format, &formatProperties);
+
+			// Depending on tiling choice, need to check for different feature flags
+			if ((imageTiling == VK_IMAGE_TILING_LINEAR && ((formatProperties.linearTilingFeatures & featureFlags) == featureFlags))
+				|| (imageTiling == VK_IMAGE_TILING_OPTIMAL && ((formatProperties.optimalTilingFeatures & featureFlags) == featureFlags)))
+			{
+				return format;
+			}
+		}
+
+		throw std::runtime_error("Failed to find a matching format!");
+	}
+
+	VkImage VulkanRenderer::create_image(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usageFlags, 
+		VkMemoryPropertyFlags memoryPropertyFlags, VkDeviceMemory* imageMemory)
+	{
+		VkImageCreateInfo imageCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+			.imageType = VK_IMAGE_TYPE_2D,
+			.format = format,
+			.extent{
+				.width = width,
+				.height = height,
+				.depth = 1,
+			},
+			.mipLevels = 1,
+			.arrayLayers = 1,
+			.samples = VK_SAMPLE_COUNT_1_BIT,				// Nº samples for multisampling
+			.tiling = tiling,
+			.usage = usageFlags,
+			.sharingMode = VK_SHARING_MODE_EXCLUSIVE,		// Whether image can be shared between queues
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,		// Layout of image data on creation
+		};
+
+		VkImage image;
+		VkResult result{ vkCreateImage(m_device.logicalDevice, &imageCreateInfo, nullptr, &image) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create image!");
+		}
+
+		// Create device memory for created image
+		// Get memory requirements for the created image
+		VkMemoryRequirements memoryRequirements;
+		vkGetImageMemoryRequirements(m_device.logicalDevice, image, &memoryRequirements);
+
+		VkMemoryAllocateInfo memoryAllocateInfo{
+			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+			.allocationSize = memoryRequirements.size,
+			.memoryTypeIndex = find_memory_type_index(m_device.physicalDevice, memoryRequirements.memoryTypeBits, memoryPropertyFlags),
+		};
+		result = vkAllocateMemory(m_device.logicalDevice, &memoryAllocateInfo, nullptr, imageMemory);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate image memory!");
+		}
+
+		// Connect memory to image
+		vkBindImageMemory(m_device.logicalDevice, image, *imageMemory, 0);
+
+		return image;
 	}
 
 	VkImageView VulkanRenderer::create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)

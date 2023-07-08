@@ -51,10 +51,10 @@ int main()
 				glm::mat4 firstModel(1.f);
 				glm::mat4 secondModel(1.f);
 
-				firstModel = glm::translate(firstModel, glm::vec3(0.f, 0.f, 1.f));
+				firstModel = glm::translate(firstModel, glm::vec3(0.f, 0.f, 0.f));
 				firstModel = glm::rotate(firstModel, glm::radians(angle), glm::vec3(0.f, 0.f, 1.f));
 
-				secondModel = glm::translate(secondModel, glm::vec3(1.f, 0.f, 0.f));
+				secondModel = glm::translate(secondModel, glm::vec3(-1.f, 0.f, -1.f));
 				secondModel = glm::rotate(secondModel, glm::radians(-angle * 10), glm::vec3(0.f, 0.f, 1.f));
 
 				vulkanRenderer.update_model_matrix(0, firstModel);
