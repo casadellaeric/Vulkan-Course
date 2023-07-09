@@ -18,7 +18,8 @@ namespace VkCourse {
 		Mesh();
 		Mesh(VkPhysicalDevice physicalDevice, VkDevice device, 
 			VkQueue transferQueue, VkCommandPool transferCommandPool, 
-			std::vector<Vertex>* vertices, std::vector<uint32_t>* indices);
+			std::vector<Vertex>* vertices, std::vector<uint32_t>* indices,
+			size_t texId);
 		
 		~Mesh();
 		
@@ -30,11 +31,16 @@ namespace VkCourse {
 		VkBuffer get_vertex_buffer();
 		VkBuffer get_index_buffer();
 
-		void set_model(glm::mat4 modelMatrix);
 		Model& get_model_matrix();
+
+		size_t get_texture_id();
+
+		void set_model(glm::mat4 modelMatrix);
 
 	private:
 		Model m_model;
+
+		size_t m_textureId;
 
 		uint32_t m_vertexCount{};
 		VkBuffer m_vertexBuffer;

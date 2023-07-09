@@ -40,32 +40,37 @@ namespace VkCourse
 			create_graphics_pipeline();
 			create_framebuffers();
 			create_command_pool();
+			create_command_buffers();
+			create_texture_sampler();
+			//allocate_dynamic_buffer_transfer_space();
+			create_uniform_buffers();
+			create_descriptor_pool();
+			create_descriptor_sets();
+			create_synchronization();
 
-			size_t firstTexture{ create_texture("wiseTree.png") };
-			
 			// Fill mvp
 			m_uboViewProjection.projection = glm::perspective(glm::radians(45.f),
 				static_cast<float>(m_swapchainExtent.width) / static_cast<float>(m_swapchainExtent.height), 0.1f, 100.f);
 
 			m_uboViewProjection.view = glm::lookAt(glm::vec3(2.f, 1.f, 2.f), glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
-			
+
 			m_uboViewProjection.projection[1][1] *= -1.f; // Invert the Y axis to fit Vulkan
 
 			// Create a mesh
 			std::vector<Vertex> meshVertices{
-				{{ -0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }},	// position, color
-				{{  0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }},
-				{{  0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
-				{{ -0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }},
+				{{ -0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 0.f, 0.f }},	// position, color
+				{{  0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 1.f, 0.f }},
+				{{  0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 1.f, 1.f }},
+				{{ -0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 0.f, 1.f }},
 			};
 
 			std::vector<Vertex> meshVertices2{
-				{{ -0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},	// position, color
-				{{  0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }},
-				{{  0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }},
-				{{ -0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }},
+				{{ -0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 0.f, 0.f }},	// position, color
+				{{  0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 1.f, 0.f }},
+				{{  0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 1.f, 1.f }},
+				{{ -0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 0.f, 1.f }},
 			};
-			
+
 			std::vector<uint32_t> meshIndices{
 				0, 3, 2,
 				2, 1, 0,
@@ -74,18 +79,16 @@ namespace VkCourse
 			m_meshes.reserve(2);
 
 			// Mesh constructor
-			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
-				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices);
-			
-			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
-				m_graphicsQueue, m_graphicsCommandPool, &meshVertices2, &meshIndices);
+			size_t firstTexture{ create_texture("wiseTree.png") };
 
-			create_command_buffers();
-			//allocate_dynamic_buffer_transfer_space();
-			create_uniform_buffers();
-			create_descriptor_pool();
-			create_descriptor_sets();
-			create_synchronization();
+			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
+				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices,
+				firstTexture);
+
+			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
+				m_graphicsQueue, m_graphicsCommandPool, &meshVertices2, &meshIndices,
+				firstTexture);
+
 		}
 		catch (const std::runtime_error& error)
 		{
@@ -160,9 +163,14 @@ namespace VkCourse
 		vkDeviceWaitIdle(m_device.logicalDevice);
 
 		//_aligned_free(m_modelTransferSpace);
+		
+		vkDestroyDescriptorPool(m_device.logicalDevice, m_samplerDescriptorPool, nullptr);
+		vkDestroyDescriptorSetLayout(m_device.logicalDevice, m_samplerSetLayout, nullptr);
+		vkDestroySampler(m_device.logicalDevice, m_textureSampler, nullptr);
 
 		for (size_t i = 0; i < m_textureImages.size(); ++i) 
 		{
+			vkDestroyImageView(m_device.logicalDevice, m_textureImageViews[i], nullptr);
 			vkDestroyImage(m_device.logicalDevice, m_textureImages[i], nullptr);
 			vkFreeMemory(m_device.logicalDevice, m_textureImageMemories[i], nullptr);
 		}
@@ -295,7 +303,9 @@ namespace VkCourse
 		}
 
 		// To set required features (for future use)
-		VkPhysicalDeviceFeatures requiredFeatures{};
+		VkPhysicalDeviceFeatures requiredFeatures{
+			.samplerAnisotropy = VK_TRUE,
+		};
 
 		// Logical device (often called just "device" as opposed to "physical device")
 		VkDeviceCreateInfo deviceCreateInfo{
@@ -499,7 +509,8 @@ namespace VkCourse
 
 	void VulkanRenderer::create_descriptor_set_layout()
 	{
-		// MVP binding information
+		// UNIFORM VALUES DESCRIPTOR SET LAYOUT
+		// VP binding information
 		VkDescriptorSetLayoutBinding vpLayoutBinding{
 			.binding = 0,											// Corresponds to the binding in the shader
 			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,	// Type (uniform, dynamic uniform, image sampler...)
@@ -530,6 +541,28 @@ namespace VkCourse
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to create a descriptor set layout!");
+		}
+
+		// TEXTURE SAMPLER DESCRIPTOR SET LAYOUT
+
+		VkDescriptorSetLayoutBinding samplerLayoutBinding{
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.pImmutableSamplers = nullptr,
+		};
+
+		VkDescriptorSetLayoutCreateInfo samplerLayoutCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = 1,
+			.pBindings = &samplerLayoutBinding,
+		};
+
+		result = vkCreateDescriptorSetLayout(m_device.logicalDevice, &samplerLayoutCreateInfo, nullptr, &m_samplerSetLayout);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create a sampler descriptor set layout!");
 		}
 	}
 
@@ -581,7 +614,7 @@ namespace VkCourse
 		};
 
 		// How the data for an attribute is defined within a vertex
-		std::array<VkVertexInputAttributeDescription, 2> vertexInputAttributeDescriptions{};
+		std::array<VkVertexInputAttributeDescription, 3> vertexInputAttributeDescriptions{};
 		// Position
 		vertexInputAttributeDescriptions[0] = {
 			.location = 0,							// Should match in the vertex shader
@@ -595,6 +628,12 @@ namespace VkCourse
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32_SFLOAT,
 			.offset = offsetof(Vertex, color),
+		};
+		vertexInputAttributeDescriptions[2] = {
+			.location = 2,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(Vertex, texCoords),
 		};
 
 		// -- Vertex input --
@@ -690,10 +729,12 @@ namespace VkCourse
 		};
 
 		// -- Layout --
+		std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts{ m_descriptorSetLayout, m_samplerSetLayout };
+
 		VkPipelineLayoutCreateInfo layoutCreateInfo{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = 1,
-			.pSetLayouts = &m_descriptorSetLayout,
+			.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size()),
+			.pSetLayouts = descriptorSetLayouts.data(),
 			.pushConstantRangeCount = 1,
 			.pPushConstantRanges = &m_pushConstantRange,
 		};
@@ -857,6 +898,32 @@ namespace VkCourse
 		}
 	}
 
+	void VulkanRenderer::create_texture_sampler()
+	{
+		VkSamplerCreateInfo samplerCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.magFilter = VK_FILTER_LINEAR,						// How to render when image is magnified on screen
+			.minFilter = VK_FILTER_LINEAR,						// Minified
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,		// Mupmap interpolation mode
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.mipLodBias = 0.f,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = 16.f,
+			.minLod = 0.f,
+			.maxLod = 0.f,
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE,				// Normalized coordinates (true) between 0-1 and not 0-size of image
+		};
+
+		VkResult result{ vkCreateSampler(m_device.logicalDevice, &samplerCreateInfo, nullptr, &m_textureSampler) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create texture sampler!");
+		}
+	}
+
 	void VulkanRenderer::create_uniform_buffers()
 	{
 		// Buffer size to store ViewProjection and model
@@ -883,6 +950,7 @@ namespace VkCourse
 
 	void VulkanRenderer::create_descriptor_pool()
 	{
+		// UNIFORM DESCRIPTOR POOL
 		// Type of descriptors + how many descriptors
 		VkDescriptorPoolSize vpDescriptorPoolSize{
 			.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -910,6 +978,25 @@ namespace VkCourse
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to create a descriptor pool!");
+		}
+
+		// SAMPLER DESCRIPTOR POOL
+		VkDescriptorPoolSize samplerPoolSize{
+			.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = MAX_OBJECTS,		// Assuming one texture per object
+		};
+
+		VkDescriptorPoolCreateInfo samplerPoolCreateInfo{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.maxSets = MAX_OBJECTS,
+			.poolSizeCount = 1,
+			.pPoolSizes = &samplerPoolSize,
+		};
+
+		result = vkCreateDescriptorPool(m_device.logicalDevice, &samplerPoolCreateInfo, nullptr, &m_samplerDescriptorPool);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create a sampler descriptor pool!");
 		}
 	}
 
@@ -1054,8 +1141,13 @@ namespace VkCourse
 					vkCmdPushConstants(m_commandBuffers[imageIndex], m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
 						0, sizeof(Model), &m_meshes[j].get_model_matrix());
 
+					std::array<VkDescriptorSet, 2> descriptorSetGroup{
+						m_descriptorSets[imageIndex],
+						m_samplerDescriptorSets[m_meshes[j].get_texture_id()],
+					};
+
 					vkCmdBindDescriptorSets(m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
-						m_pipelineLayout, 0, 1, &m_descriptorSets[imageIndex], 0, nullptr);
+						m_pipelineLayout, 0, static_cast<uint32_t>(descriptorSetGroup.size()), descriptorSetGroup.data(), 0, nullptr);
 
 					vkCmdDrawIndexed(m_commandBuffers[imageIndex], m_meshes[j].get_index_count(), 1, 0, 0, 0);
 				}
@@ -1243,8 +1335,13 @@ namespace VkCourse
 		//vkGetPhysicalDeviceProperties(device, &physicalDeviceProperties);
 
 		//// Physical device features: geometry shader, tessellation shader, depth clamp, multi viewport...
-		//VkPhysicalDeviceFeatures physicalDeviceFeatures;
-		//vkGetPhysicalDeviceFeatures(device, &physicalDeviceFeatures);
+		VkPhysicalDeviceFeatures physicalDeviceFeatures;
+		vkGetPhysicalDeviceFeatures(device, &physicalDeviceFeatures);
+
+		if (!physicalDeviceFeatures.samplerAnisotropy)
+		{
+			return false;
+		}
 
 		if (!check_device_extension_support(device, requestedDeviceExtensionNames))
 		{
@@ -1454,7 +1551,7 @@ namespace VkCourse
 		return shaderModule;
 	}
 
-	size_t VulkanRenderer::create_texture(const std::string& fileName)
+	size_t VulkanRenderer::create_texture_image(const std::string& fileName)
 	{
 		// Load image file
 		int width, height;
@@ -1496,7 +1593,58 @@ namespace VkCourse
 		m_textureImages.push_back(textureImage);
 		m_textureImageMemories.push_back(textureImageMemory);
 
-		return (m_textureImages.size() - 1);
+		return m_textureImages.size() - 1;
+	}
+
+	size_t VulkanRenderer::create_texture(const std::string& fileName)
+	{
+		size_t textureImageLocation{ create_texture_image(fileName) };
+
+		VkImageView textureImageView{ create_image_view(m_textureImages[textureImageLocation],
+			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT) };
+		m_textureImageViews.push_back(textureImageView);
+
+		return create_texture_descriptor(textureImageView);
+	}
+
+	size_t VulkanRenderer::create_texture_descriptor(VkImageView textureImage)
+	{
+		VkDescriptorSet descriptorSet;
+
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = m_samplerDescriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &m_samplerSetLayout,
+		};
+
+		VkResult result{ vkAllocateDescriptorSets(m_device.logicalDevice, &descriptorSetAllocateInfo, &descriptorSet) };
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate texture descriptor sets!");
+		}
+
+		VkDescriptorImageInfo descriptorImageInfo{
+			.sampler = m_textureSampler,								// Sampler to use for set
+			.imageView = textureImage,									// Image to bind to set
+			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	// Image layout when in use
+		};
+
+		VkWriteDescriptorSet writeDescriptorSet{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = descriptorSet,
+			.dstBinding = 0,
+			.dstArrayElement = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &descriptorImageInfo,
+		};
+
+		vkUpdateDescriptorSets(m_device.logicalDevice, 1, &writeDescriptorSet, 0, nullptr);
+
+		m_samplerDescriptorSets.push_back(descriptorSet);
+
+		return m_samplerDescriptorSets.size() - 1;
 	}
 
 	stbi_uc* VulkanRenderer::load_texture_file(const std::string& fileName, int* width, int* height, VkDeviceSize* imageSize)

@@ -22,6 +22,7 @@ namespace VkCourse
 	struct Vertex {
 		glm::vec3 position;
 		glm::vec3 color;		// RGB
+		glm::vec2 texCoords;
 	};
 
 	// Indices of queue families (-1 if invalid)

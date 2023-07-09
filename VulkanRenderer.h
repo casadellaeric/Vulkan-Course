@@ -71,12 +71,17 @@ namespace VkCourse
 		VkImageView m_depthBufferImageView;
 		VkFormat m_depthBufferFormat;
 
+		VkSampler m_textureSampler;
+
 		// Descriptors
 		VkDescriptorSetLayout m_descriptorSetLayout;
+		VkDescriptorSetLayout m_samplerSetLayout;
 		VkPushConstantRange m_pushConstantRange;
 
 		VkDescriptorPool m_descriptorPool;
+		VkDescriptorPool m_samplerDescriptorPool;
 		std::vector<VkDescriptorSet> m_descriptorSets{};
+		std::vector<VkDescriptorSet> m_samplerDescriptorSets{};
 
 		std::vector<VkBuffer> m_vpUniformBuffers{};
 		std::vector<VkDeviceMemory> m_vpUniformBufferMemories{};
@@ -90,6 +95,7 @@ namespace VkCourse
 		// Assets
 		std::vector<VkImage> m_textureImages{};
 		std::vector<VkDeviceMemory> m_textureImageMemories{};		// An optimal layout would have only one memory accessed with offsets
+		std::vector<VkImageView> m_textureImageViews{};
 
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
@@ -123,6 +129,7 @@ namespace VkCourse
 		void create_command_pool();
 		void create_command_buffers();
 		void create_synchronization();
+		void create_texture_sampler();
 
 		void create_uniform_buffers();
 		void create_descriptor_pool();
@@ -162,7 +169,9 @@ namespace VkCourse
 		VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 		VkShaderModule create_shader_module(const std::vector<char>& code);
 
+		size_t create_texture_image(const std::string& fileName);
 		size_t create_texture(const std::string& fileName);
+		size_t create_texture_descriptor(VkImageView textureImage);
 
 		// -- Loader functions
 		stbi_uc* load_texture_file(const std::string& fileName, int* width, int* height, VkDeviceSize* imageSize);

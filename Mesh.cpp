@@ -6,7 +6,8 @@ VkCourse::Mesh::Mesh()
 
 VkCourse::Mesh::Mesh(VkPhysicalDevice physicalDevice, VkDevice device,
 	VkQueue transferQueue, VkCommandPool transferCommandPool,
-	std::vector<Vertex>* vertices, std::vector<uint32_t>* indices)
+	std::vector<Vertex>* vertices, std::vector<uint32_t>* indices,
+	size_t texId)
 {
 	m_vertexCount = static_cast<uint32_t>(vertices->size());
 	m_indexCount = static_cast<uint32_t>(indices->size());
@@ -15,6 +16,7 @@ VkCourse::Mesh::Mesh(VkPhysicalDevice physicalDevice, VkDevice device,
 	create_vertex_buffer(transferQueue, transferCommandPool, vertices);
 	create_index_buffer(transferQueue, transferCommandPool, indices);
 	m_model = { .model = glm::mat4(1.f) };
+	m_textureId = texId;
 }
 
 VkCourse::Mesh::~Mesh()
@@ -58,6 +60,11 @@ void VkCourse::Mesh::set_model(glm::mat4 modelMatrix)
 VkCourse::Model& VkCourse::Mesh::get_model_matrix()
 {
 	return m_model;
+}
+
+size_t VkCourse::Mesh::get_texture_id()
+{
+	return m_textureId;
 }
 
 void VkCourse::Mesh::create_vertex_buffer(VkQueue transferQueue, VkCommandPool transferCommandPool,
