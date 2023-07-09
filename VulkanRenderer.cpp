@@ -4,6 +4,13 @@
 
 #include <vulkan/vulkan.h>
 
+#pragma warning( push )
+#pragma warning( disable : 26451 )
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#pragma warning( pop )
+
 #include <stdexcept>
 #include <iostream>
 #include <vector>
@@ -52,43 +59,11 @@ namespace VkCourse
 			m_uboViewProjection.projection = glm::perspective(glm::radians(45.f),
 				static_cast<float>(m_swapchainExtent.width) / static_cast<float>(m_swapchainExtent.height), 0.1f, 100.f);
 
-			m_uboViewProjection.view = glm::lookAt(glm::vec3(2.f, 1.f, 2.f), glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
+			m_uboViewProjection.view = glm::lookAt(glm::vec3(10.f, 1.f, 20.f), glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
 
 			m_uboViewProjection.projection[1][1] *= -1.f; // Invert the Y axis to fit Vulkan
 
-			// Create a mesh
-			std::vector<Vertex> meshVertices{
-				{{ -0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 0.f, 0.f }},	// position, color
-				{{  0.2f,  0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 1.f, 0.f }},
-				{{  0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 1.f, 1.f }},
-				{{ -0.2f, -0.4f,  0.f }, {  1.f,  0.f,  0.f }, { 0.f, 1.f }},
-			};
-
-			std::vector<Vertex> meshVertices2{
-				{{ -0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 0.f, 0.f }},	// position, color
-				{{  0.2f,  0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 1.f, 0.f }},
-				{{  0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 1.f, 1.f }},
-				{{ -0.2f, -0.4f,  0.f }, {  0.f,  0.f,  1.f }, { 0.f, 1.f }},
-			};
-
-			std::vector<uint32_t> meshIndices{
-				0, 3, 2,
-				2, 1, 0,
-			};
-
-			m_meshes.reserve(2);
-
-			// Mesh constructor
-			size_t firstTexture{ create_texture("wiseTree.png") };
-
-			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
-				m_graphicsQueue, m_graphicsCommandPool, &meshVertices, &meshIndices,
-				firstTexture);
-
-			m_meshes.emplace_back(m_device.physicalDevice, m_device.logicalDevice,
-				m_graphicsQueue, m_graphicsCommandPool, &meshVertices2, &meshIndices,
-				firstTexture);
-
+			create_texture("White.png");
 		}
 		catch (const std::runtime_error& error)
 		{
@@ -164,6 +139,11 @@ namespace VkCourse
 
 		//_aligned_free(m_modelTransferSpace);
 		
+		for (size_t i = 0; i < m_meshModels.size(); ++i)
+		{
+			m_meshModels[i].destroy_mesh_model();
+		}
+
 		vkDestroyDescriptorPool(m_device.logicalDevice, m_samplerDescriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(m_device.logicalDevice, m_samplerSetLayout, nullptr);
 		vkDestroySampler(m_device.logicalDevice, m_textureSampler, nullptr);
@@ -187,10 +167,6 @@ namespace VkCourse
 			vkFreeMemory(m_device.logicalDevice, m_vpUniformBufferMemories[i], nullptr);
 			//vkDestroyBuffer(m_device.logicalDevice, m_modelDynamicUniformBuffers[i], nullptr);
 			//vkFreeMemory(m_device.logicalDevice, m_modelDynamicUniformBufferMemories[i], nullptr);
-		}
-		for (auto& mesh : m_meshes)
-		{
-			mesh.destroy_buffers();
 		}
 		for (size_t i = 0; i < MAX_FRAME_DRAWS; ++i) {
 			vkDestroySemaphore(m_device.logicalDevice, m_semaphoresRenderFinished[i], nullptr);
@@ -217,8 +193,9 @@ namespace VkCourse
 
 	void VulkanRenderer::update_model_matrix(unsigned int modelId, glm::mat4 modelMatrix)
 	{
-		if (modelId >= m_meshes.size()) return;
-		m_meshes[modelId].set_model(modelMatrix);
+		if (modelId >= m_meshModels.size()) return;
+
+		m_meshModels[modelId].set_model(modelMatrix);
 	}
 
 	void VulkanRenderer::create_instance()
@@ -1128,28 +1105,33 @@ namespace VkCourse
 			{
 				vkCmdBindPipeline(m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
 
-				for (size_t j = 0; j < m_meshes.size(); ++j)
+				for (size_t j = 0; j < m_meshModels.size(); ++j)
 				{
-					VkBuffer vertexBuffers[]{ m_meshes[j].get_vertex_buffer()};	// Buffers to bind
-					VkDeviceSize offsets[]{ 0 };
-					vkCmdBindVertexBuffers(m_commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
-					vkCmdBindIndexBuffer(m_commandBuffers[imageIndex], m_meshes[j].get_index_buffer(), 0, VK_INDEX_TYPE_UINT32);
-						
-					// Offset for the j-th dynamic uniform buffer
-					//uint32_t dynamicUniformOffset{ static_cast<uint32_t>(m_modelUniformAlignment * j) };
+					MeshModel& thisModel{ m_meshModels[j] };
 
 					vkCmdPushConstants(m_commandBuffers[imageIndex], m_pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
-						0, sizeof(Model), &m_meshes[j].get_model_matrix());
+						0, sizeof(Model), &thisModel.get_model_matrix());
 
-					std::array<VkDescriptorSet, 2> descriptorSetGroup{
-						m_descriptorSets[imageIndex],
-						m_samplerDescriptorSets[m_meshes[j].get_texture_id()],
-					};
+					for (size_t k = 0; k < thisModel.get_mesh_count(); ++k)
+					{
+						VkBuffer vertexBuffers[]{ thisModel.get_mesh(k).get_vertex_buffer() };	// Buffers to bind
+						VkDeviceSize offsets[]{ 0 };
+						vkCmdBindVertexBuffers(m_commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
+						vkCmdBindIndexBuffer(m_commandBuffers[imageIndex], thisModel.get_mesh(k).get_index_buffer(), 0, VK_INDEX_TYPE_UINT32);
 
-					vkCmdBindDescriptorSets(m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
-						m_pipelineLayout, 0, static_cast<uint32_t>(descriptorSetGroup.size()), descriptorSetGroup.data(), 0, nullptr);
+						// Offset for the j-th dynamic uniform buffer
+						//uint32_t dynamicUniformOffset{ static_cast<uint32_t>(m_modelUniformAlignment * j) };
 
-					vkCmdDrawIndexed(m_commandBuffers[imageIndex], m_meshes[j].get_index_count(), 1, 0, 0, 0);
+						std::array<VkDescriptorSet, 2> descriptorSetGroup{
+							m_descriptorSets[imageIndex],
+							m_samplerDescriptorSets[thisModel.get_mesh(k).get_texture_id()],
+						};
+
+						vkCmdBindDescriptorSets(m_commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS,
+							m_pipelineLayout, 0, static_cast<uint32_t>(descriptorSetGroup.size()), descriptorSetGroup.data(), 0, nullptr);
+
+						vkCmdDrawIndexed(m_commandBuffers[imageIndex], thisModel.get_mesh(k).get_index_count(), 1, 0, 0, 0);
+					}
 				}
 			}
 			vkCmdEndRenderPass(m_commandBuffers[imageIndex]);
@@ -1645,6 +1627,41 @@ namespace VkCourse
 		m_samplerDescriptorSets.push_back(descriptorSet);
 
 		return m_samplerDescriptorSets.size() - 1;
+	}
+
+	size_t VulkanRenderer::create_mesh_model(const std::string& modelFileName)
+	{
+		// Import model "scene"
+		Assimp::Importer importer;
+		const aiScene* scene{ importer.ReadFile(modelFileName, 
+			aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices) };
+		if (scene == nullptr)
+		{
+			throw std::runtime_error("Failed to load model " + modelFileName + "!");
+		}
+
+		// Get vector of all materials with 1:1 ID placement
+		std::vector<std::string> textureNames{ MeshModel::load_materials(scene) };
+
+		// Conversion from the materials list IDs to our descriptor array IDs
+		std::vector<size_t> materialsToTextures(textureNames.size(), 0);
+
+		// Create textures
+		for (size_t i = 0; i < textureNames.size(); ++i)
+		{
+			// If it is empty it will reference the texture at position 0 (default texture)
+			if (!textureNames[i].empty())
+			{
+				materialsToTextures[i] = create_texture(textureNames[i]);
+			}
+		}
+
+		// Load all meshes
+		std::vector<Mesh> modelMeshes{ MeshModel::load_node(m_device.physicalDevice, m_device.logicalDevice,
+			m_graphicsQueue, m_graphicsCommandPool, scene->mRootNode, scene, materialsToTextures) };
+
+		m_meshModels.emplace_back(modelMeshes);
+		return m_meshModels.size() - 1;
 	}
 
 	stbi_uc* VulkanRenderer::load_texture_file(const std::string& fileName, int* width, int* height, VkDeviceSize* imageSize)

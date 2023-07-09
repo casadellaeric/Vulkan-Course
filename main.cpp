@@ -16,7 +16,10 @@ int main()
 
 		{
 			VkCourse::VulkanRenderer vulkanRenderer(window);
-			if (vulkanRenderer.init() == EXIT_FAILURE) return EXIT_FAILURE;
+			if (vulkanRenderer.init() == EXIT_FAILURE)
+			{
+				return EXIT_FAILURE;
+			}
 
 			float angle = 0.f;
 			float deltaTime = 0.f;
@@ -24,6 +27,8 @@ int main()
 
 			float addedFrameTime{};
 			uint16_t frameCount{}; // nº frames since last fps check
+
+			size_t testModel{ vulkanRenderer.create_mesh_model("Models/Seahawk.obj") };
 
 			// Main loop
 			while (!window.should_close())
@@ -50,17 +55,9 @@ int main()
 					angle -= 360.f;
 				}
 				
-				glm::mat4 firstModel(1.f);
-				glm::mat4 secondModel(1.f);
-
-				firstModel = glm::translate(firstModel, glm::vec3(0.f, 0.f, 0.f));
-				firstModel = glm::rotate(firstModel, glm::radians(angle), glm::vec3(0.f, 0.f, 1.f));
-
-				secondModel = glm::translate(secondModel, glm::vec3(-1.f, 0.f, -1.f));
-				secondModel = glm::rotate(secondModel, glm::radians(-angle * 10), glm::vec3(0.f, 0.f, 1.f));
-
-				vulkanRenderer.update_model_matrix(0, firstModel);
-				vulkanRenderer.update_model_matrix(1, secondModel);
+				glm::mat4 testMat{ glm::rotate(glm::mat4(1.f), glm::radians(angle), {0.f, 0.f, 1.f}) };
+				testMat = glm::scale(testMat, { 0.1f, 0.1f, 0.1f });
+				vulkanRenderer.update_model_matrix(testModel, testMat);
 
 				vulkanRenderer.draw();
 				frameCount++;

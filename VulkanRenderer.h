@@ -3,6 +3,7 @@
 #include "Window.h"
 #include "Utilities.h"
 #include "Mesh.h"
+#include "MeshModel.h"
 
 #include "stb_image.h"
 
@@ -34,6 +35,7 @@ namespace VkCourse
 		void draw();
 		void destroy();
 
+		size_t create_mesh_model(const std::string& modelFileName);
 		void update_model_matrix(unsigned int modelId, glm::mat4 modelMatrix);
 
 	private:
@@ -43,7 +45,7 @@ namespace VkCourse
 		unsigned int m_currentFrame{ 0 };
 
 		// Scene objects
-		std::vector<Mesh> m_meshes{};
+		std::vector<MeshModel> m_meshModels{};
 
 		// Scene settings
 		struct UboViewProjection {
