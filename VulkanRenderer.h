@@ -36,7 +36,7 @@ namespace VkCourse
 		void destroy();
 
 		size_t create_mesh_model(const std::string& modelFileName);
-		void update_model_matrix(unsigned int modelId, glm::mat4 modelMatrix);
+		void update_model_matrix(size_t modelId, glm::mat4 modelMatrix);
 
 	private:
 		const Window& m_window;
@@ -68,9 +68,14 @@ namespace VkCourse
 		std::vector<VkFramebuffer> m_swapchainFramebuffers{};
 		std::vector<VkCommandBuffer> m_commandBuffers{};
 
-		VkImage m_depthBufferImage;
-		VkDeviceMemory m_depthBufferImageMemory;
-		VkImageView m_depthBufferImageView;
+		std::vector<VkImage> m_colorBufferImages;
+		std::vector<VkDeviceMemory> m_colorBufferImageMemories;
+		std::vector<VkImageView> m_colorBufferImageViews;
+		VkFormat m_colorBufferFormat;
+
+		std::vector<VkImage> m_depthBufferImages;
+		std::vector<VkDeviceMemory> m_depthBufferImageMemories;
+		std::vector<VkImageView> m_depthBufferImageViews;
 		VkFormat m_depthBufferFormat;
 
 		VkSampler m_textureSampler;
@@ -78,12 +83,15 @@ namespace VkCourse
 		// Descriptors
 		VkDescriptorSetLayout m_descriptorSetLayout;
 		VkDescriptorSetLayout m_samplerSetLayout;
+		VkDescriptorSetLayout m_inputAttachmentSetLayout;
 		VkPushConstantRange m_pushConstantRange;
 
 		VkDescriptorPool m_descriptorPool;
 		VkDescriptorPool m_samplerDescriptorPool;
+		VkDescriptorPool m_inputAttachmentDescriptorPool;
 		std::vector<VkDescriptorSet> m_descriptorSets{};
 		std::vector<VkDescriptorSet> m_samplerDescriptorSets{};
+		std::vector<VkDescriptorSet> m_inputAttachmentDescriptorSets{};
 
 		std::vector<VkBuffer> m_vpUniformBuffers{};
 		std::vector<VkDeviceMemory> m_vpUniformBufferMemories{};
@@ -102,6 +110,10 @@ namespace VkCourse
 		// Pipeline
 		VkPipeline m_graphicsPipeline;
 		VkPipelineLayout m_pipelineLayout;
+
+		VkPipeline m_secondPipeline;
+		VkPipelineLayout m_secondPipelineLayout;
+
 		VkRenderPass m_renderPass;
 
 		// Pools
@@ -126,6 +138,7 @@ namespace VkCourse
 		void create_descriptor_set_layout();
 		void create_push_constant_range();
 		void create_graphics_pipeline();
+		void create_color_buffer_image();
 		void create_depth_buffer_image();
 		void create_framebuffers();
 		void create_command_pool();
@@ -136,6 +149,7 @@ namespace VkCourse
 		void create_uniform_buffers();
 		void create_descriptor_pool();
 		void create_descriptor_sets();
+		void create_input_descriptor_sets();
 
 		void update_uniform_buffers(uint32_t imageIndex);
 
